@@ -1,0 +1,12 @@
+title = "Ex360"
+
+[extend]
+useDefault = true
+
+# The rail remembers which sections are closed under a browser storage id.
+# The variable is named like a key, so the default generic-api-key rule matches it.
+# It is not a credential.
+[allowlist]
+description = "localStorage id for the collapsed rail"
+regexTarget = "secret"
+regexes = ['''ex360[./]nav[./]collapsed''']

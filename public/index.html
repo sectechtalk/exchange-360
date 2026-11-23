@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Exchange 360</title>
+  <script src="/theme-boot.js"></script>
+  <link rel="icon" href="/favicon.svg">
+  <link rel="stylesheet" href="/360-base.css">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="suite-bar">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">Ex</div>
+      <div class="brand-text"><strong>Exchange 360</strong><small>Ex360</small></div>
+    </div>
+  </header>
+  <aside class="sidebar">
+    <div id="app-switcher" data-app="ex-360"></div>
+    <nav id="navigation" data-rail aria-label="Pages">
+      <button type="button" class="nav-label" aria-expanded="true" data-section="setup"><span>SETUP</span><span class="nav-chevron" aria-hidden="true"></span></button>
+      <a href="#setup" data-view="setup" class="nav-item"><span data-nav-icon="wrench"></span>Setup steps</a>
+      <button type="button" class="nav-label" aria-expanded="true" data-section="new-hire"><span>NEW HIRE</span><span class="nav-chevron" aria-hidden="true"></span></button>
+      <a href="#start" data-view="start" class="nav-item"><span data-nav-icon="compass"></span>Start here</a>
+      <a href="#needs" data-view="needs" class="nav-item"><span data-nav-icon="clipboard-list"></span>License, Roles and Permissions</a>
+      <a href="#asked" data-view="asked" class="nav-item"><span data-nav-icon="siren"></span>Someone just asked</a>
+      <a href="#glossary" data-view="glossary" class="nav-item"><span data-nav-icon="book-open"></span>Glossary</a>
+      <a href="#learn" data-view="learn" class="nav-item"><span data-nav-icon="graduation-cap"></span>Learn</a>
+      <a href="#playbooks" data-view="playbooks" class="nav-item"><span data-nav-icon="scroll-text"></span>Playbooks</a>
+      <button type="button" class="nav-label" aria-expanded="true" data-section="organization"><span>ORGANIZATION</span><span class="nav-chevron" aria-hidden="true"></span></button>
+      <a href="#review" data-view="review" class="nav-item"><span data-nav-icon="scan-search"></span>Config review</a>
+      <a href="#health" data-view="health" class="nav-item"><span data-nav-icon="heart-pulse"></span>Service health</a>
+      <button type="button" class="nav-group nav-item" aria-expanded="true" data-group="mailboxes"><span data-nav-icon="building-2"></span><span class="nav-group-text">Mailboxes</span><span class="nav-chevron" aria-hidden="true"></span></button>
+      <a href="#rcp-shared" data-view="rcp-shared" class="nav-item nav-child"><span data-nav-icon="door-open"></span>Shared mailboxes</a>
+      <a href="#rcp-resources" data-view="rcp-resources" class="nav-item nav-child"><span data-nav-icon="map-pin"></span>Room and equipment mailboxes</a>
+      <a href="#rcp-forwarding" data-view="rcp-forwarding" class="nav-item nav-child"><span data-nav-icon="refresh-cw"></span>Mailboxes that forward</a>
+      <button type="button" class="nav-group nav-item" aria-expanded="true" data-group="mail-enabled-groups"><span data-nav-icon="layout-dashboard"></span><span class="nav-group-text">Mail-enabled groups</span><span class="nav-chevron" aria-hidden="true"></span></button>
+      <a href="#rcp-groups" data-view="rcp-groups" class="nav-item nav-child"><span data-nav-icon="at-sign"></span>Distribution and mail-enabled security groups</a>
+      <a href="#rcp-dynamic" data-view="rcp-dynamic" class="nav-item nav-child"><span data-nav-icon="wand-sparkles"></span>Dynamic distribution groups</a>
+      <a href="#rcp-m365" data-view="rcp-m365" class="nav-item nav-child"><span data-nav-icon="cloud"></span>Microsoft 365 groups</a>
+      <a href="#rules" data-view="rules" class="nav-item"><span data-nav-icon="sliders-horizontal"></span>Mail flow rules</a>
+      <button type="button" class="nav-group nav-item" aria-expanded="true" data-group="access-and-assignments"><span data-nav-icon="user-check"></span><span class="nav-group-text">Access and assignments</span><span class="nav-chevron" aria-hidden="true"></span></button>
+      <a href="#user-roles" data-view="user-roles" class="nav-item nav-child"><span data-nav-icon="user-plus"></span>User roles</a>
+      <a href="#admin-roles" data-view="admin-roles" class="nav-item nav-child"><span data-nav-icon="user-cog"></span>Admin roles</a>
+      <a href="#role-assignments" data-view="role-assignments" class="nav-item nav-child"><span data-nav-icon="fingerprint"></span>Role assignments and scopes</a>
+      <a href="#app-rbac" data-view="app-rbac" class="nav-item nav-child"><span data-nav-icon="app-window"></span>App access</a>
+      <button type="button" class="nav-group nav-item" aria-expanded="true" data-group="compliance"><span data-nav-icon="blocks"></span><span class="nav-group-text">Compliance</span><span class="nav-chevron" aria-hidden="true"></span></button>
+      <a href="#dlp" data-view="dlp" class="nav-item nav-child"><span data-nav-icon="file-badge"></span>DLP</a>
+      <a href="#labels" data-view="labels" class="nav-item nav-child"><span data-nav-icon="badge-check"></span>Sensitivity labels</a>
+      <a href="#retention-cc" data-view="retention-cc" class="nav-item nav-child"><span data-nav-icon="file-text"></span>Retention</a>
+      <a href="#ediscovery" data-view="ediscovery" class="nav-item nav-child"><span data-nav-icon="search-code"></span>eDiscovery</a>
+      <a href="#compliance-admin" data-view="compliance-admin" class="nav-item nav-child"><span data-nav-icon="crown"></span>Compliance admin</a>
+      <a data-group="security-policies" href="#security" data-view="security" class="nav-item nav-group"><span data-nav-icon="shield-check"></span><span class="nav-group-text">Security policies</span><span class="nav-chevron" aria-hidden="true" title="Show or hide the policy pages"></span></a>
+      <a href="#sec-antispam" data-view="sec-antispam" class="nav-item nav-child"><span data-nav-icon="radar"></span>Anti-spam</a>
+      <a href="#sec-antiphish" data-view="sec-antiphish" class="nav-item nav-child"><span data-nav-icon="gauge"></span>Anti-phishing</a>
+      <a href="#sec-antimalware" data-view="sec-antimalware" class="nav-item nav-child"><span data-nav-icon="test-tube"></span>Anti-malware</a>
+      <a href="#sec-safelinks" data-view="sec-safelinks" class="nav-item nav-child"><span data-nav-icon="flask-conical"></span>Safe Links</a>
+      <a href="#sec-safeattach" data-view="sec-safeattach" class="nav-item nav-child"><span data-nav-icon="package-check"></span>Safe Attachments</a>
+      <a href="#sec-outbound" data-view="sec-outbound" class="nav-item nav-child"><span data-nav-icon="refresh-ccw"></span>Outbound spam and forwarding</a>
+      <a href="#sec-connection" data-view="sec-connection" class="nav-item nav-child"><span data-nav-icon="monitor-dot"></span>Connection filter and allow list</a>
+      <a href="#sec-quarantine" data-view="sec-quarantine" class="nav-item nav-child"><span data-nav-icon="ticket"></span>Quarantine policies</a>
+      <a href="#domains" data-view="domains" class="nav-item"><span data-nav-icon="globe"></span>Domains and DNS</a>
+      <a href="#connectors" data-view="connectors" class="nav-item"><span data-nav-icon="plug"></span>Connectors</a>
+      <a href="#config" data-view="config" class="nav-item"><span data-nav-icon="settings"></span>Org config</a>
+      <a href="#licenses" data-view="licenses" class="nav-item"><span data-nav-icon="receipt"></span>Licenses</a>
+      <a href="#migrations" data-view="migrations" class="nav-item"><span data-nav-icon="boxes"></span>Migrations</a>
+      <button type="button" class="nav-group nav-item" aria-expanded="true" data-group="auditing-logging"><span data-nav-icon="calendar-clock"></span><span class="nav-group-text">Auditing/Logging</span><span class="nav-chevron" aria-hidden="true"></span></button>
+      <a href="#audit" data-view="audit" class="nav-item nav-child"><span data-nav-icon="file-chart-column"></span>Audit</a>
+      <a href="#changes" data-view="changes" class="nav-item nav-child"><span data-nav-icon="timer"></span>Change history</a>
+      <button type="button" class="nav-label" aria-expanded="true" data-section="single-recipient"><span>SINGLE RECIPIENT</span><span class="nav-chevron" aria-hidden="true"></span></button>
+      <a href="#mb-recipient" data-view="mb-recipient" class="nav-item"><span data-nav-icon="circle-user"></span>Recipient</a>
+      <a href="#mb-forward" data-view="mb-forward" class="nav-item"><span data-nav-icon="git-pull-request"></span>Forwarding</a>
+      <a href="#mb-rules" data-view="mb-rules" class="nav-item"><span data-nav-icon="stamp"></span>Inbox rules</a>
+      <a href="#mb-delegation" data-view="mb-delegation" class="nav-item"><span data-nav-icon="key-round"></span>Delegation</a>
+      <a href="#mb-groups" data-view="mb-groups" class="nav-item"><span data-nav-icon="users"></span>Member of</a>
+      <a href="#mb-policies" data-view="mb-policies" class="nav-item"><span data-nav-icon="shield-half"></span>Policies that apply</a>
+      <a href="#mb-protocols" data-view="mb-protocols" class="nav-item"><span data-nav-icon="smartphone"></span>Protocols</a>
+      <a href="#mb-signins" data-view="mb-signins" class="nav-item"><span data-nav-icon="log-in"></span>Sign-ins</a>
+      <a href="#mb-findings" data-view="mb-findings" class="nav-item"><span data-nav-icon="shield-alert"></span>Findings</a>
+      <a href="#mb-compliance" data-view="mb-compliance" class="nav-item"><span data-nav-icon="file-check"></span>Compliance on this recipient</a>
+      <a href="#mb-ca" data-view="mb-ca" class="nav-item"><span data-nav-icon="lock-keyhole"></span>Conditional Access</a>
+      <a href="#mb-xdr" data-view="mb-xdr" class="nav-item"><span data-nav-icon="bug"></span>Defender XDR</a>
+      <button type="button" class="nav-label" aria-expanded="true" data-section="troubleshoot"><span>TROUBLESHOOT</span><span class="nav-chevron" aria-hidden="true"></span></button>
+      <a href="#trace" data-view="trace" class="nav-item"><span data-nav-icon="arrow-left-right"></span>Trace a message</a>
+      <a href="#nexthop" data-view="nexthop" class="nav-item"><span data-nav-icon="blocks"></span>NextHop</a>
+      <a href="#quarantine" data-view="quarantine" class="nav-item"><span data-nav-icon="ban"></span>Quarantine</a>
+      <a href="#hops" data-view="hops" class="nav-item"><span data-nav-icon="activity"></span>Message hops</a>
+      <a href="#outlook" data-view="outlook" class="nav-item"><span data-nav-icon="laptop"></span>Outlook on this PC</a>
+      <button type="button" class="nav-label" aria-expanded="true" data-section="on-premises"><span>ON-PREMISES</span><span class="nav-chevron" aria-hidden="true"></span></button>
+      <a href="#onprem" data-view="onprem" class="nav-item"><span data-nav-icon="server"></span>On-premises</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <button type="button" id="viewer-button" class="btn">Sign in</button>
+      <button type="button" id="theme-toggle" class="btn" aria-pressed="false"><span class="theme-label">Dark mode</span></button>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="topbar">
+      <button type="button" id="nav-toggle" class="btn" aria-expanded="false" aria-controls="navigation">Menu</button>
+      <span id="mode-badge" class="badge demo">DEMO</span>
+      <span id="who" class="muted"></span>
+      <div id="connections" class="connections"></div>
+      <button type="button" id="refresh-data" class="btn sm" title="Read the tenant again instead of using what this visit already read">Read again</button>
+    </div>
+    <div class="page-heading">
+      <h1 id="page-title">Start here</h1>
+      <p id="page-intro"></p>
+    </div>
+    <div id="page"></div>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

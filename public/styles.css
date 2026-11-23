@@ -1,0 +1,324 @@
+/* Exchange 360. Looks like the Azure portal and the Microsoft 365 admin center (Fluent UI): a blue suite bar,
+   a left nav, a command bar, white panes on a light grey page, and DetailsList-style tables.
+   Neutrals, the type ramp and status colours come from 360-base.css.
+   Buttons use their own fills so they never disappear into the page, and disabled buttons are grey and dashed. */
+:root{
+  --accent:#0078d4;
+  --accent-strong:#0078d4;
+  --accent-hover:#106ebe;
+  --accent-ink:#ffffff;
+  --accent-soft:#deecf9;
+  --suite-bg:#0078d4;
+  --suite-fg:#ffffff;
+  --btn-bg:#eff6fc;
+  --btn-fg:#201f1e;
+  --btn-border:#0078d4;
+  --btn-hover-bg:#deecf9;
+  --btn-off-bg:#edebe9;
+  --btn-off-fg:#605e5c;
+  --btn-off-border:#8a8886;
+}
+:root[data-theme="dark"]{
+  --accent:#6cb8f6;
+  --accent-strong:#2899f5;
+  --accent-hover:#3aa0f3;
+  --accent-ink:#1b1a19;
+  --accent-soft:#1f3a52;
+  --suite-bg:#201f1e;
+  --suite-fg:#f3f2f1;
+  --btn-bg:#243a4f;
+  --btn-fg:#f3f2f1;
+  --btn-border:#6cb8f6;
+  --btn-hover-bg:#2d4a64;
+  --btn-off-bg:#3b3a39;
+  --btn-off-fg:#c8c6c4;
+  --btn-off-border:#8a8886;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --accent:#6cb8f6;--accent-strong:#2899f5;--accent-hover:#3aa0f3;--accent-ink:#1b1a19;--accent-soft:#1f3a52;
+    --suite-bg:#201f1e;--suite-fg:#f3f2f1;
+    --btn-bg:#243a4f;--btn-fg:#f3f2f1;--btn-border:#6cb8f6;--btn-hover-bg:#2d4a64;
+    --btn-off-bg:#3b3a39;--btn-off-fg:#c8c6c4;--btn-off-border:#8a8886;
+  }
+}
+
+*{box-sizing:border-box}
+body{margin:0;display:grid;grid-template-columns:248px 1fr;grid-template-rows:48px 1fr;min-height:100vh;background:var(--bg);color:var(--fg)}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+/* Suite bar: the 48px band across the top of every Microsoft admin portal. */
+.suite-bar{grid-column:1 / -1;display:flex;align-items:center;gap:12px;height:48px;padding:0 16px;background:var(--suite-bg);color:var(--suite-fg);position:sticky;top:0;z-index:6}
+.suite-bar .brand{display:flex;gap:10px;align-items:center;padding:0;color:inherit}
+.brand strong{display:block;font-size:var(--text-base);font-weight:var(--weight-semibold)}
+.brand small{color:inherit;opacity:.85;font-size:var(--text-xs)}
+.brand .brand-text{display:flex;gap:8px;align-items:baseline}
+.mark{width:28px;height:28px;border-radius:var(--radius);background:var(--suite-fg);color:var(--suite-bg);display:grid;place-items:center;font-weight:var(--weight-semibold);font-size:var(--text-xs)}
+.sidebar{background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;position:sticky;top:48px;height:calc(100vh - 48px)}
+#app-switcher{padding:10px 12px 6px}
+.app-switcher-toggle{cursor:pointer;list-style:none;font-size:var(--text-sm);color:var(--muted)}
+.app-switcher-toggle::-webkit-details-marker{display:none}
+.app-switch-list{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:2px}
+.app-switch-item{display:block;padding:6px 8px;border-radius:var(--radius);text-decoration:none;color:inherit}
+.app-switch-item:hover{background:var(--row-hover);text-decoration:none}
+.app-switch-item strong{display:block;font-weight:var(--weight-semibold)}
+.app-switch-item small{color:var(--muted)}
+.app-switch-item[aria-current="page"]{background:var(--accent-soft)}
+#navigation{overflow:auto;padding:0 0 12px;flex:1}
+.nav-label{color:var(--fg)}
+.nav-item{min-height:36px;padding:0 16px;border-radius:0;color:inherit;text-decoration:none}
+.nav-item:hover{background:var(--row-hover);text-decoration:none}
+.nav-item.active,.nav-item[aria-current="page"]{background:var(--row-selected);color:var(--fg);font-weight:var(--weight-semibold);box-shadow:inset 3px 0 0 var(--accent)}
+.nav-item .icon{color:var(--accent)}
+.nav-item.not-applicable{color:var(--muted);opacity:.7}
+.na-tag{margin-left:auto;font-size:var(--text-xs);font-weight:var(--weight-semibold);letter-spacing:.04em;padding:0 6px;border-radius:var(--radius);border:1px dashed var(--line-strong);color:var(--muted)}
+.loading{font-weight:var(--weight-semibold);margin:0}
+.loading::before{content:"";display:inline-block;width:14px;height:14px;margin-right:8px;border:1.5px solid var(--accent-soft);border-top-color:var(--accent);border-radius:50%;vertical-align:-2px;animation:ex360-spin 1.3s cubic-bezier(.53,.21,.29,.67) infinite}
+@keyframes ex360-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.loading::before{animation:none}}
+.sidebar-bottom{border-top:1px solid var(--line);padding:12px;display:grid;gap:8px}
+.main{min-width:0;padding:0 32px 48px}
+/* Command bar: the strip under the suite bar in Azure and the Microsoft 365 admin center. */
+.topbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;min-height:44px;margin:0 -32px 0;padding:6px 32px;background:var(--surface);border-bottom:1px solid var(--line)}
+.connections{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.connection{display:inline-flex;gap:6px;align-items:center}
+.not-authorized .btn,.connections .btn{text-decoration:none;display:inline-flex}
+.not-authorized details{margin-top:8px}
+.not-authorized pre{white-space:pre-wrap}
+#nav-toggle{display:none}
+.page-heading{margin:20px 0 16px}
+.page-heading h1{margin:0}
+.page-heading p{max-width:80ch;color:var(--muted);margin:6px 0 0}
+.badge{display:inline-flex;align-items:center;font-size:var(--text-xs);font-weight:var(--weight-semibold);letter-spacing:.02em;padding:1px 8px;border-radius:var(--radius);border:1px solid var(--line)}
+.badge.demo{background:var(--warn-soft);color:var(--warn);border-color:var(--warn)}
+.badge.live{background:var(--ok-soft);color:var(--ok);border-color:var(--ok)}
+.grid{display:grid;gap:16px}
+.grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+/* Panes are Fluent cards: white, 4px corners, depth-4 shadow. */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-card);box-shadow:var(--shadow-4);padding:16px 20px}
+.panel > h2,.panel > h3{margin:0}
+.stack{display:grid;gap:12px}
+.spread{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.muted{color:var(--muted)}
+.metric{font-size:var(--text-2xl);font-weight:var(--weight-semibold);line-height:var(--leading-tight)}
+/* Callouts are Fluent message bars. */
+.callout{border:0;border-left:4px solid var(--info);background:var(--info-soft);border-radius:var(--radius);padding:8px 12px}
+.callout.warn{border-left-color:var(--warn);background:var(--warn-soft)}
+.callout.crit{border-left-color:var(--crit);background:var(--crit-soft)}
+.callout.ok{border-left-color:var(--ok);background:var(--ok-soft)}
+.not-authorized{border:0;border-left:4px solid var(--crit);background:var(--crit-soft);color:var(--fg);border-radius:var(--radius);padding:8px 12px}
+.not-authorized strong{color:var(--crit)}
+/* Tables look like Fluent DetailsList: 42px header and rows, a thin line under each row, grey on hover. */
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top;font-size:var(--text-base);line-height:20px}
+thead th{padding:0 4px;height:42px;vertical-align:middle;font-weight:var(--weight-semibold);color:var(--fg);border-bottom:1px solid var(--line);white-space:nowrap}
+tbody th{font-weight:var(--weight-regular)}
+/* Rows alternate between two shades, both different from the panel and the page, so a long row is easy to follow
+   across the table. Hover and the selected row are darker than either stripe. */
+tbody tr:nth-child(odd){background:var(--row-a)}
+tbody tr:nth-child(even){background:var(--row-b)}
+tbody tr:hover{background:var(--row-stripe-hover)}
+tbody tr.is-selected,tbody tr.is-selected:hover{background:var(--row-stripe-selected);box-shadow:inset 3px 0 0 var(--accent)}
+.table-wrap{overflow:auto}
+/* Buttons: Fluent shape (2px corners, 32px tall, semibold), filled so they never match the page. */
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:32px;background:var(--btn-bg);color:var(--btn-fg);border:1px solid var(--btn-border);border-radius:var(--radius);padding:0 16px;cursor:pointer;font-weight:var(--weight-semibold);text-decoration:none;line-height:1.2}
+.btn:hover{background:var(--btn-hover-bg);text-decoration:none}
+.btn.primary{background:var(--accent-strong);color:var(--accent-ink);border-color:var(--accent-strong)}
+.btn.primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+.btn:disabled,.btn:disabled:hover{background:var(--btn-off-bg);color:var(--btn-off-fg);border-style:dashed;border-color:var(--btn-off-border);cursor:not-allowed}
+.btn.sm{min-height:24px;padding:0 8px;font-size:var(--text-sm)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+/* Inputs: Fluent TextField. */
+input[type="text"],input[type="search"],input[type="number"],textarea,select{background:var(--surface);color:var(--fg);border:1px solid var(--line-strong);border-radius:var(--radius);padding:5px 8px;min-height:32px;width:100%}
+input[type="text"]:hover,input[type="search"]:hover,input[type="number"]:hover,textarea:hover,select:hover{border-color:var(--fg)}
+input[type="text"]:focus,input[type="search"]:focus,input[type="number"]:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+textarea{min-height:140px;font-family:var(--font-mono);font-size:var(--text-sm)}
+pre,code{background:var(--code-bg);border-radius:var(--radius)}
+pre{padding:10px 12px;overflow:auto;font-size:var(--text-sm)}
+.hop{display:grid;grid-template-columns:28px 1fr;gap:8px}
+.hop i{font-style:normal;font-weight:var(--weight-semibold);color:var(--accent)}
+.sev-high{color:var(--crit);font-weight:var(--weight-semibold)}
+.sev-medium{color:var(--warn);font-weight:var(--weight-semibold)}
+.sev-low,.sev-info{color:var(--info);font-weight:var(--weight-semibold)}
+.drop{border:1px dashed var(--line-strong);border-radius:var(--radius-card);padding:16px;background:var(--surface-2);display:grid;gap:4px}
+ol.steps,ul.plain{margin:0;padding-left:18px;display:grid;gap:6px}
+dt{font-weight:var(--weight-semibold);margin-top:8px}
+dd{margin:0 0 8px}
+.portal-list{display:grid;gap:4px;margin:8px 0 0;padding:0;list-style:none}
+@media (max-width:860px){
+  body{grid-template-columns:1fr}
+  .sidebar{position:fixed;z-index:5;top:48px;transform:translateX(-105%);width:min(320px,88vw);transition:transform .15s ease}
+  body.nav-open .sidebar{transform:none}
+  #nav-toggle{display:inline-flex}
+  .grid-3,.grid-2{grid-template-columns:1fr}
+  .main{padding:0 16px 32px}
+  .topbar{margin:0 -16px;padding:6px 16px}
+}
+/* Setup steps */
+.setup-row{border:1px solid var(--line);border-left:4px solid var(--line);border-radius:var(--radius-card);padding:12px 14px;display:grid;gap:8px;background:var(--surface)}
+.setup-row.ok{border-left-color:var(--ok)}
+.setup-row.crit{border-left-color:var(--crit)}
+.setup-row.warn{border-left-color:var(--warn)}
+.setup-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.setup-pill{font-size:var(--text-xs);font-weight:var(--weight-semibold);padding:3px 9px;border-radius:var(--radius);border:1px solid currentColor;white-space:nowrap}
+.setup-pill.ok{background:var(--ok-soft);color:var(--ok)}
+.setup-pill.crit{background:var(--crit-soft);color:var(--crit)}
+.setup-pill.warn{background:var(--warn-soft);color:var(--warn)}
+.setup-pill.muted{background:var(--surface-2);color:var(--muted, var(--fg))}
+.setup-fix{border-top:1px dashed var(--line);padding-top:8px;display:grid;gap:6px;justify-items:start}
+.setup-row a.btn{text-decoration:none;justify-self:start}
+.setup-row pre{white-space:pre-wrap}
+/* Everything for one user (single-mailbox report) */
+.report-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.report-bar a.btn{text-decoration:none}
+.report-toc{display:flex;flex-wrap:wrap;gap:4px 14px;margin:0;padding:0;list-style:none;font-size:var(--text-sm)}
+.report-section h2{scroll-margin-top:16px}
+.report-intro{color:var(--muted, var(--fg));opacity:.85;margin:0}
+.report-facts td small{display:block;opacity:.8;font-weight:normal}
+/* Everything for the organization: Configured / Not configured tags. Filled, never the page background. */
+.status-tag{display:inline-block;white-space:nowrap;font-size:var(--text-xs);font-weight:var(--weight-semibold);padding:2px 8px;border-radius:var(--radius);border:1px solid transparent}
+.status-tag.configured{background:var(--accent-strong);color:var(--accent-ink);border-color:var(--accent-strong)}
+.status-tag.empty{background:var(--btn-off-bg);color:var(--btn-off-fg);border:1px dashed var(--btn-off-border)}
+.status-tag.reference{background:var(--btn-bg);color:var(--btn-fg);border-color:var(--btn-border)}
+.status-tag.missing{background:var(--btn-bg);color:var(--warn);border-color:var(--warn)}
+.settings-table td:first-child{width:1%}
+.raw-props summary{cursor:pointer;color:var(--muted, inherit);font-size:var(--text-sm)}
+.btn.secondary-strong{background:var(--btn-bg);color:var(--btn-fg);border:2px solid var(--accent-strong)}
+.report-list{margin:0;padding:0;list-style:none;display:grid;gap:6px}
+.report-list li{display:grid;grid-template-columns:64px 1fr;gap:8px;align-items:baseline}
+.report-list li.plain{grid-template-columns:1fr}
+.report-list li.muted{opacity:.75}
+.report-tag{font-size:var(--text-xs);font-weight:var(--weight-semibold);letter-spacing:.04em}
+.report-tag.high{color:var(--crit)}
+.report-tag.medium{color:var(--warn)}
+.report-tag.low,.report-tag.info{color:var(--info)}
+.report-tag.ok{color:var(--ok)}
+.report-pre{white-space:pre-wrap}
+.report-section .table-wrap td{white-space:pre-wrap}
+.report-list li.plain{display:list-item;margin-left:18px;list-style:disc}
+
+.learn-examples{border:1px solid var(--line);border-radius:8px;padding:8px 12px}
+.learn-examples>summary,.learn-example>summary{cursor:pointer;font-weight:var(--weight-medium)}
+.learn-example{border-top:1px solid var(--line);padding:8px 0}
+.learn-example h4{margin:8px 0 4px}
+.learn-example a.btn{text-decoration:none;display:inline-block;margin-top:8px}
+.learn-where h3{margin:0}
+/* Shared data table (public/grid.js), laid out like Fluent DetailsList in the Microsoft 365 admin center and Azure:
+   each column header shows its name and a chevron; selecting it opens Sort A to Z, Sort Z to A and a column search. */
+.data-grid{display:grid;gap:8px}
+.grid-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.grid-count{font-size:var(--text-sm);color:var(--muted);margin-right:auto}
+.grid-search{max-width:280px}
+.col-head{display:flex;gap:6px;align-items:center;width:100%;min-height:42px;background:var(--surface);color:var(--fg);border:0;border-radius:0;padding:0 8px;font:inherit;font-size:var(--text-base);font-weight:var(--weight-semibold);cursor:pointer;white-space:nowrap;text-align:left}
+.col-head:hover{background:var(--row-hover)}
+.col-head[aria-expanded="true"]{background:var(--row-selected)}
+.col-head.active .grid-mark{color:var(--accent)}
+.col-head:focus-visible,tr.clickable:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.grid-caret{font-size:var(--text-xs);color:var(--muted)}
+.grid-mark{font-weight:var(--weight-semibold)}
+.col-menu{position:fixed;z-index:30;width:240px;display:grid;gap:6px;padding:8px;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:var(--radius-card);box-shadow:var(--shadow-16)}
+.col-menu .btn{justify-content:flex-start}
+.col-menu-label{font-size:var(--text-xs);color:var(--muted);margin-top:4px}
+tr.clickable{cursor:pointer}
+.tick{font-weight:var(--weight-semibold)}
+.tick.yes{color:var(--ok)}
+.tick.no{color:var(--muted)}
+/* The object in a row: its name opens it in the first portal that can open it directly. Under the name, one link
+   per portal where it can be changed. Filled chips open the object itself; outlined chips open the portal page to
+   find it on. Both are clickable, so neither is grey or dashed (grey dashed means disabled). */
+.obj-cell{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+td:has(> .obj-cell),th:has(> .obj-cell){min-width:15rem}
+.obj-link{color:var(--accent);font-weight:var(--weight-semibold)}
+.obj-link::after{content:"\00a0\2197";font-size:var(--text-xs);font-weight:var(--weight-regular)}
+.portal-chips{display:flex;flex-wrap:wrap;gap:4px}
+.portal-chip{font-size:var(--text-xs);font-weight:var(--weight-semibold);line-height:18px;padding:0 6px;border:1px solid var(--btn-border);border-radius:var(--radius);background:var(--btn-bg);color:var(--btn-fg);white-space:nowrap}
+.portal-chip:hover{background:var(--btn-hover-bg);text-decoration:none}
+.portal-chip.find{background:var(--surface);color:var(--accent)}
+.portal-chip.find:hover{background:var(--accent-soft)}
+.obj-note{font-size:var(--text-xs);color:var(--muted)}
+/* Details panel that slides in from the right: a Fluent Panel, like selecting a row in the Exchange admin center. */
+.flyout-back{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:20}
+.flyout{position:fixed;top:0;right:0;bottom:0;width:min(644px,100vw);z-index:21;background:var(--surface);color:var(--fg);box-shadow:var(--shadow-64);display:flex;flex-direction:column}
+.flyout-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:18px 24px 12px}
+.flyout-head h2{margin:0;font-size:var(--text-lg)}
+.flyout-body{padding:4px 24px 32px;overflow:auto}
+.flyout-body h3{margin:8px 0 0;font-size:var(--text-md)}
+.flyout-body a.btn{text-decoration:none;justify-self:start}
+.spread a.btn{text-decoration:none}
+.rules-grid td:nth-child(2){min-width:14rem}
+.rules-grid td:nth-child(8){min-width:12rem}
+.grow{flex:1 1 20rem}
+.flyout.flyout-wide{width:min(1100px,100vw)}
+
+.walk-box{border:1px solid var(--line);border-radius:var(--radius-card);padding:12px 14px;background:var(--surface)}
+.walk-box h3{margin:0}
+.walk{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.walk-step{display:grid;grid-template-columns:2rem 5.2rem 4.2rem minmax(10rem,16rem) 1fr;gap:10px;align-items:baseline;padding:8px 6px;border-left:4px solid var(--line);border-radius:4px}
+.walk-step.ok{border-left-color:var(--ok,#2e9b5f)}
+.walk-step.medium{border-left-color:var(--warn,#c98a12)}
+.walk-step.high{border-left-color:var(--crit,#c94040)}
+.walk-step.info{border-left-color:var(--accent,#3b82c4)}
+.walk-n{font-weight:var(--weight-semibold);text-align:right}
+.walk-time{font-family:var(--mono,ui-monospace,monospace);font-variant-numeric:tabular-nums}
+.walk-gap{color:var(--muted);font-size:var(--text-sm);font-variant-numeric:tabular-nums}
+.walk-comp{font-weight:var(--weight-semibold)}
+[hidden]{display:none !important}
+/* NextHop: number, tag, component, text. No times: it is a prediction. */
+.nexthop-walk .walk-step{grid-template-columns:2rem 4.2rem minmax(9rem,14rem) 1fr}
+.visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+@media (max-width:720px){.nexthop-walk .walk-step{grid-template-columns:2rem 1fr}.nexthop-walk .walk-comp,.nexthop-walk .walk-text{grid-column:2 / -1}.walk-step{grid-template-columns:2rem 5.2rem 1fr}.walk-gap{display:none}.walk-comp,.walk-text{grid-column:2 / -1}}
+/* Button feedback (public/busy.js): busy spinner, "done" flash and a visible press for instant buttons. */
+.btn.is-busy{cursor:progress}
+.btn.is-busy::before{content:"";display:inline-block;width:.85em;height:.85em;margin-right:.45em;vertical-align:-.1em;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:ex360-spin .8s linear infinite}
+.btn.is-done{outline:2px solid var(--ok);outline-offset:1px}
+.btn.pressed,a.btn.pressed{transform:translateY(1px);filter:brightness(.92)}
+@media (prefers-reduced-motion: reduce){.btn.is-busy::before{animation:none;border-right-color:currentColor;opacity:.6}}
+/* "Where this is changed" panes: collapsed by default, the heading is the toggle. */
+.where-changed > summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
+.where-changed > summary::-webkit-details-marker{display:none}
+.where-changed > summary::before{content:'\25B8';display:inline-block;width:1em;text-align:center;transition:transform .15s;flex:none}
+.where-changed[open] > summary::before{transform:rotate(90deg)}
+.where-changed > summary h3{margin:0}
+/* Stacked form: one field per row, the label (with "(required)" or "(optional)") in the left column and the control
+   in the right column, both columns aligned down the form. Narrow screens put the label above the control. */
+.form-rows{display:grid;grid-template-columns:minmax(14rem,max-content) minmax(0,36rem);gap:10px 20px;align-items:center}
+.form-group,.form-row{display:contents}
+.form-rows .form-group[hidden],.form-rows .form-row[hidden]{display:none}
+.form-label{display:grid;gap:2px;font-weight:var(--weight-semibold)}
+.form-need{font-weight:var(--weight-regular);color:var(--muted)}
+.form-hint{font-weight:var(--weight-regular);color:var(--muted);font-size:var(--text-sm)}
+.form-control{min-width:0}
+.form-control textarea{min-height:96px}
+.form-check{min-height:32px}
+.form-row[data-field="body"] .form-label{align-self:start;padding-top:6px}
+@media (max-width:700px){.form-rows{grid-template-columns:minmax(0,1fr);gap:4px}.form-control{margin-bottom:10px}}
+
+/* License, Roles and Permissions: groups under a heading, one entry per line, OR between alternatives. */
+.need-cell{display:flex;flex-direction:column;gap:6px}
+.need-head{font-weight:var(--weight-semibold)}
+.need-items{list-style:none;margin:0;padding:0}
+.need-group .need-items{padding-left:12px}
+.need-note{font-size:var(--text-sm)}
+.need-or{font-size:var(--text-xs);font-weight:var(--weight-semibold);letter-spacing:.06em;color:var(--accent)}
+.need-legend{display:grid;grid-template-columns:max-content 1fr;gap:2px 12px;margin:4px 0 8px}
+.need-legend dt{font-weight:var(--weight-semibold)}
+.need-legend dd{margin:0}
+@media (max-width:640px){.need-legend{grid-template-columns:1fr}.need-legend dd{margin-bottom:6px}}
+.need-feature{display:flex;flex-direction:column;gap:4px}
+.need-learn{font-size:var(--text-sm);font-weight:normal}
+.glossary-filter{align-items:center;gap:8px;max-width:360px}
+.glossary-filter select{flex:1}
+/* Step-by-step lists stripe like tables. Under each NextHop step, the portal pages where its setting is changed. */
+.walk > .walk-step:nth-child(odd){background:var(--row-a)}
+.walk > .walk-step:nth-child(even){background:var(--row-b)}
+.nexthop-walk .walk-text{display:grid;gap:4px}
+.walk-links{display:grid;gap:2px}
+.walk-links-label{font-size:var(--text-xs);color:var(--muted);line-height:18px;margin-right:2px}
+/* NextHop live read: the progress block, and the bubble shown on any page when a long read finishes. */
+.nh-live{border:1px solid var(--line);border-radius:var(--radius-card);padding:12px 14px;background:var(--surface-2)}
+.nh-live-progress progress{width:min(100%,36rem);height:8px;accent-color:var(--accent)}
+.nh-toast{position:fixed;right:16px;bottom:16px;z-index:40;width:min(380px,calc(100vw - 32px));display:grid;gap:6px;padding:12px 14px;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-left:4px solid var(--ok);border-radius:var(--radius-card);box-shadow:var(--shadow-16)}
+.nh-toast.crit{border-left-color:var(--crit)}
+.nh-toast p{margin:0}

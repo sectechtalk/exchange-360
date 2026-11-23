@@ -1,0 +1,20 @@
+{
+  "name": "exchange-360",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Exchange 360 (Ex360): read-only Exchange Online troubleshooting for the SecTechTalk 360 family",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server/index.mjs",
+    "dev": "node --watch --env-file-if-exists=.env server/index.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "check": "node tools/check-syntax.mjs",
+    "build": "node tools/check-syntax.mjs",
+    "export": "node tools/export-public.mjs"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

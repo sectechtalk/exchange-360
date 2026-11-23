@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sectechtalk/exchange-360/docs/contracts/mailflow-config.v1.schema.json",
+  "title": "Mail flow configuration export (sectechtalk.mailflow-config v1)",
+  "description": "Written by export/Export-MailFlowConfig.ps1. Read by Exchange 360 and NextHop 360. Change only by adding optional fields; a rename or removal bumps version and this file name.",
+  "type": "object",
+  "required": ["format", "version", "generatedAt", "generator", "readOnly", "tenant", "mailbox", "connections", "summary", "sections", "secretsRemoved", "truncated", "notes"],
+  "properties": {
+    "format": { "const": "sectechtalk.mailflow-config" },
+    "version": { "const": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "generator": {
+      "type": "object",
+      "required": ["name", "version", "powershell"],
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" },
+        "powershell": { "type": "string" },
+        "exchangeOnlineManagement": { "type": ["string", "null"] }
+      }
+    },
+    "readOnly": { "const": true },
+    "tenant": {
+      "type": "object",
+      "properties": {
+        "organization": { "type": ["string", "null"] },
+        "tenantId": { "type": ["string", "null"] },
+        "signedInAs": { "type": ["string", "null"] },
+        "defaultDomain": { "type": ["string", "null"] }
+      }
+    },
+    "mailbox": { "type": "object", "required": ["address"], "properties": { "address": { "type": "string" } } },
+    "connections": {
+      "type": "object",
+      "required": ["exchangeOnline", "compliance"],
+      "properties": {
+        "exchangeOnline": { "$ref": "#/$defs/connection" },
+        "compliance": { "$ref": "#/$defs/connection" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["sections", "ok", "empty", "error", "unavailable", "skipped"],
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "sections": { "type": "object", "additionalProperties": { "$ref": "#/$defs/section" } },
+    "secretsRemoved": { "type": "array", "items": { "type": "string" }, "description": "Paths of properties replaced with \"(removed: may hold a secret)\"." },
+    "truncated": { "type": "array", "items": { "type": "string" }, "description": "Paths of values cut at 100,000 characters or 5,000 items." },
+    "notes": { "type": "array", "items": { "type": "string" } }
+  },
+  "$defs": {
+    "connection": {
+      "type": "object",
+      "required": ["status", "error"],
+      "properties": {
+        "status": { "enum": ["not attempted", "connected", "existing", "failed", "skipped"] },
+        "error": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/error" }] }
+      }
+    },
+    "error": {
+      "type": "object",
+      "required": ["message"],
+      "properties": {
+        "message": { "type": "string", "description": "The exact text PowerShell gave." },
+        "category": { "type": "string" },
+        "errorId": { "type": "string" },
+        "exceptionType": { "type": "string" },
+        "hint": { "type": "string" }
+      }
+    },
+    "section": {
+      "type": "object",
+      "required": ["title", "group", "direction", "session", "command", "status", "count", "items", "error", "warnings", "durationMs"],
+      "properties": {
+        "title": { "type": "string" },
+        "group": { "enum": ["routing", "protection", "encryption", "retention", "mailbox", "compliance"] },
+        "direction": { "enum": ["inbound", "outbound", "both"] },
+        "session": { "enum": ["exo", "ipps"] },
+        "command": { "type": "string", "description": "The exact command that ran, with the mailbox filled in." },
+        "status": { "enum": ["ok", "empty", "error", "unavailable", "skipped"] },
+        "count": { "type": "integer", "minimum": 0 },
+        "items": { "type": "array", "items": { "type": "object", "description": "Every property the cmdlet returned, as plain JSON." } },
+        "error": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/error" }] },
+        "warnings": { "type": "array", "items": { "type": "string" } },
+        "durationMs": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

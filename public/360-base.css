@@ -1,0 +1,82 @@
+/* 360-base.css: the shared look and feel for every 360 app.
+   Copy this file unchanged into each app. App-specific styles go in the app's own stylesheet.
+   Standard agreed 2026-11-21 (replaces the 2026-11-15 standard): look and feel like the Azure portal and the
+   Microsoft 365 admin center, which use Microsoft's Fluent UI. Segoe UI from the computer (no web font download),
+   the Fluent type ramp with a 12px floor, weights 400/600, Fluent neutral and status colours, Fluent blue accent. */
+
+:root{
+  /* Type. Fluent UI ramp. Sizes are rem so browser zoom and text-size settings work. Nothing goes below --text-xs. */
+  --font-sans:"Segoe UI","Segoe UI Web (West European)",-apple-system,BlinkMacSystemFont,Roboto,"Helvetica Neue",sans-serif;
+  --font-mono:"Cascadia Mono",Consolas,ui-monospace,monospace;
+  --text-xs:.75rem;     /* 12px Fluent small: badges, captions, footnotes */
+  --text-sm:.8125rem;   /* 13px Azure portal: nav items, secondary text */
+  --text-base:.875rem;  /* 14px Fluent medium: body, table rows and headers, form fields, buttons */
+  --text-md:1rem;       /* 16px Fluent mediumPlus: pane and card titles (h3) */
+  --text-lg:1.25rem;    /* 20px Fluent xLarge: section titles (h2), panel titles */
+  --text-xl:1.5rem;     /* 24px Fluent xLargePlus: page title (h1), like an Azure blade title */
+  --text-2xl:1.75rem;   /* 28px Fluent xxLarge: metric numbers */
+  --weight-regular:400;
+  --weight-medium:600;
+  --weight-semibold:600;
+  --leading-tight:1.25;
+  --leading-body:1.43;  /* 20px on 14px, Fluent body line height */
+  --radius:2px;         /* Fluent buttons, inputs, tags */
+  --radius-card:4px;    /* Fluent cards and panes */
+  --shadow-4:0 1.6px 3.6px rgba(0,0,0,.132),0 .3px .9px rgba(0,0,0,.108);
+  --shadow-16:0 6.4px 14.4px rgba(0,0,0,.132),0 1.2px 3.6px rgba(0,0,0,.108);
+  --shadow-64:0 25.6px 57.6px rgba(0,0,0,.22),0 4.8px 14.4px rgba(0,0,0,.18);
+}
+/* Colour. Fluent neutrals (light) and the Azure portal dark theme. Each app may set its accent in its own stylesheet:
+   --accent (links, icons, focus, active nav; 4.5:1 on --surface), --accent-strong (filled buttons and badges, with
+   --accent-ink text at 4.5:1), --accent-soft (selected backgrounds) and --accent-ink. Status never uses the accent.
+   Light is the default; dark applies when the app sets data-theme="dark", or follows the OS when it sets neither. */
+:root{
+  --bg:#faf9f8;--surface:#ffffff;--surface-2:#f3f2f1;--line:#edebe9;--line-strong:#8a8886;--fg:#323130;--muted:#605e5c;
+  --row-hover:#f3f2f1;--row-selected:#edebe9;
+  --row-a:#f6f5f4;--row-b:#e5e3e1;--row-stripe-hover:#d9d7d5;--row-stripe-selected:#cecccb;
+  --ok:#107c10;--ok-soft:#dff6dd;--warn:#835b00;--warn-soft:#fff4ce;--crit:#a4262c;--crit-soft:#fde7e9;
+  --info:#005a9e;--info-soft:#eff6fc;--code-bg:#f3f2f1;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){color-scheme:dark;
+    --bg:#1b1a19;--surface:#252423;--surface-2:#323130;--line:#3b3a39;--line-strong:#8a8886;--fg:#f3f2f1;--muted:#c8c6c4;
+    --row-hover:#323130;--row-selected:#3b3a39;
+    --row-a:#2c2b2a;--row-b:#363534;--row-stripe-hover:#42403f;--row-stripe-selected:#4d4b49;
+    --ok:#92c353;--ok-soft:#2b3a1f;--warn:#fce100;--warn-soft:#433519;--crit:#f1707b;--crit-soft:#442726;
+    --info:#6cb8f6;--info-soft:#1b2d3e;--code-bg:#292827;}
+}
+:root[data-theme="dark"]{color-scheme:dark;
+  --bg:#1b1a19;--surface:#252423;--surface-2:#323130;--line:#3b3a39;--line-strong:#8a8886;--fg:#f3f2f1;--muted:#c8c6c4;
+  --row-hover:#323130;--row-selected:#3b3a39;
+    --row-a:#2c2b2a;--row-b:#363534;--row-stripe-hover:#42403f;--row-stripe-selected:#4d4b49;
+  --ok:#92c353;--ok-soft:#2b3a1f;--warn:#fce100;--warn-soft:#433519;--crit:#f1707b;--crit-soft:#442726;
+  --info:#6cb8f6;--info-soft:#1b2d3e;--code-bg:#292827;}
+
+:root{font-family:var(--font-sans);font-synthesis:none;color:var(--fg);background:var(--bg);-webkit-font-smoothing:antialiased}
+body{font-size:var(--text-base);line-height:var(--leading-body)}
+button,input,select,textarea{font:inherit}
+code,kbd,pre,samp{font-family:var(--font-mono)}
+h1{font-size:var(--text-xl);font-weight:var(--weight-semibold);line-height:var(--leading-tight)}
+h2{font-size:var(--text-lg);font-weight:var(--weight-semibold);line-height:var(--leading-tight)}
+h3{font-size:var(--text-md);font-weight:var(--weight-semibold);line-height:var(--leading-tight)}
+small{font-size:var(--text-xs)}
+table{font-variant-numeric:tabular-nums}
+
+/* Rail (left navigation). Every 360 app uses the same pattern: collapsible section headers (a <button class="nav-label">
+   with a chevron, uppercase, one step larger than the page links under it) and one unique icon per page link.
+   Colours come from each app's stylesheet; these rules set only shape and size. */
+.nav-label{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;margin:0;border:0;border-radius:var(--radius);
+  background:none;color:inherit;font:inherit;font-size:var(--text-base);font-weight:var(--weight-semibold);letter-spacing:.06em;
+  line-height:var(--leading-tight);text-transform:uppercase;text-align:left;cursor:pointer;user-select:none;padding:14px 12px 4px}
+.nav-chevron{flex:0 0 auto;width:6px;height:6px;margin-right:4px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;
+  transform:rotate(45deg);transition:transform .15s ease;opacity:.8}
+.nav-label[aria-expanded="false"] .nav-chevron{transform:rotate(-45deg)}
+.nav-item{display:flex;align-items:center;gap:12px;font-size:var(--text-sm)}
+.nav-collapsed{display:none!important}
+.nav-group{width:100%;margin:0;border:0;background:none;color:inherit;font:inherit;font-size:var(--text-sm);text-align:left;cursor:pointer}
+.nav-group .nav-group-text{flex:1}
+.nav-group[aria-expanded="false"] .nav-chevron{transform:rotate(-45deg)}
+.nav-child{padding-left:30px!important}
+.nav-group-collapsed{display:none!important}
+svg.icon{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+@media (prefers-reduced-motion:reduce){.nav-chevron{transition:none}}

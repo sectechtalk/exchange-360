@@ -1,0 +1,24 @@
+# Exchange 360 on the owner's PC.
+#   docker compose up --build -d
+#   open http://localhost:8360
+name: exchange-360
+
+services:
+  exchange-360:
+    build: .
+    image: exchange-360
+    # A fixed name so an AI client can start the MCP server with: docker exec -i exchange-360 node server/mcp-stdio.mjs
+    container_name: exchange-360
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8360:8360"
+    # Mail flow exports (export/Export-MailFlowConfig.ps1 writes to %USERPROFILE%\Ex360-exports), read-only,
+    # so the NextHop MCP tools can read them. Set EX360_EXPORTS_HOST in your shell to use another folder.
+    volumes:
+      - "${EX360_EXPORTS_HOST:-${USERPROFILE:-.}/Ex360-exports}:/exports:ro"
+    env_file:
+      - .env
+    environment:
+      PORT: "8360"
+      HOST: "0.0.0.0"
+      EX360_EXPORTS_DIR: /exports
