@@ -1,7 +1,9 @@
 import { installShell } from './shell.js';
+import { chipClass, chipText } from './portal-block.js';
 import { applyTheme, toggleTheme, initialTheme } from './theme.js';
 import { viewFromHash, writeView, queryFromHash } from './router.js';
 import { PAGES, isPage } from '/lib/pages.js';
+import { PLAN_STATUS_WORDS } from '/lib/recipient-extra.js';
 import { analyze, explainField } from '/lib/analyzer.js';
 import { shareCopy } from '/lib/redact.js';
 import { SAMPLES } from '/lib/samples.js';
@@ -29,9 +31,37 @@ import { userRoleWords, entraExchangeRoles, splitAssignments, assignmentScope, n
 import { portalLinks, linkTitle, recipientKind as linkKindFor } from '/lib/object-links.js';
 import { RULE_COLUMNS, ruleListRow, describeRule, ruleSettings, ruleWarnings } from '/lib/rules-view.js';
 import { renderNextHop } from './nexthop-page.js';
+import { renderSnapshots } from './snapshots-page.js';
 
 const $ = id => document.getElementById(id);
 const pageEl = $('page');
+// Safety net for the collapsed-by-default rule: any pane that reaches the page without passing
+// through panel() (a section filled in later, or built by another module, such as NextHop's
+// "What happens, step by step" box) still gets Expand.
+new MutationObserver(() => {
+  for (const s of pageEl.querySelectorAll('section.panel, section.walk-box')) if (!s.classList.contains('pane-ready')) { s.classList.add('pane-ready'); foldPane(s); }
+  syncFoldAll();
+}).observe(pageEl, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-expanded'] });
+// "Expand all sections" / "Collapse all sections" under the page heading, on every page with two or more panes.
+const foldButtons = () => [...pageEl.querySelectorAll('.pane-fold')];
+function syncFoldAll() {
+  const all = $('fold-all');
+  if (!all || all.classList.contains('is-busy')) return;
+  const folds = foldButtons();
+  all.hidden = folds.length < 2;
+  const anyFolded = folds.some(b => b.getAttribute('aria-expanded') === 'false');
+  all.textContent = anyFolded ? 'Expand all sections' : 'Collapse all sections';
+  all.title = anyFolded ? 'Open every pane on this page' : 'Fold every pane on this page';
+}
+$('fold-all')?.addEventListener('click', event => {
+  const all = event.currentTarget;
+  const expand = foldButtons().some(b => b.getAttribute('aria-expanded') === 'false');
+  busy(all, expand ? 'Expanding…' : 'Collapsing…', async () => {
+    await new Promise(r => setTimeout(r, 120));
+    // Outer panes first, then any pane inside them that just came into view.
+    for (let pass = 0; pass < 3; pass++) for (const b of foldButtons()) if ((b.getAttribute('aria-expanded') === 'false') === expand) b.click();
+  }).then(syncFoldAll);
+});
 const state = { session: {}, demo: true, org: null, box: null, mailboxId: '', mailboxSource: 'user', analysis: null, signins: null, trace: null, outlook: null, compliance: null, report: null };
 
 const el = (tag, props = {}, ...kids) => {
@@ -48,22 +78,87 @@ const el = (tag, props = {}, ...kids) => {
 // The object in a table row: its name opens the first portal that can open it directly, and under the name one
 // link per portal where it can be changed (lib/object-links.js). A portal that cannot open one object directly gets
 // a "find it here" link to its page for that kind of object. Nothing links to Graph.
+// Design rule (2026-11-25): every object a page returns is clickable. The name opens the object's own properties when a
+// portal can open it by ID; when no portal can, it opens the page that lists that kind of object, and the tooltip says so.
+function nameLink(text, links, className = 'obj-link') {
+  const first = links.find(l => l.direct) || links[0];
+  if (!first) return el('span', { class: 'obj-name', text });
+  return el('a', { class: first.direct ? className : `${className} find`, href: first.url, target: '_blank', rel: 'noopener noreferrer', title: linkTitle(first, text), text });
+}
 function objCell(label, kind, obj = {}) {
   const text = label == null || label === '' ? '—' : String(label);
   const { links, note: why } = portalLinks(kind, obj);
-  const first = links.find(l => l.direct);
   const wrap = el('span', { class: 'obj-cell' });
-  wrap.append(first ? el('a', { class: 'obj-link', href: first.url, target: '_blank', rel: 'noopener noreferrer', title: linkTitle(first, text), text }) : el('span', { class: 'obj-name', text }));
+  wrap.append(text === '—' ? el('span', { class: 'obj-name', text }) : nameLink(text, links));
   if (links.length) {
     const list = el('span', { class: 'portal-chips' });
-    for (const l of links) list.append(el('a', { class: l.direct ? 'portal-chip' : 'portal-chip find', href: l.url, target: '_blank', rel: 'noopener noreferrer', title: linkTitle(l, text), text: l.direct ? l.short : `${l.short}: find it here` }));
+    for (const l of links) list.append(el('a', { class: chipClass(l), href: l.url, target: '_blank', rel: 'noopener noreferrer', title: `${linkTitle(l, text)}${l.home ? '. This is where the object is stored; the other portals show some of its settings.' : ''}`, text: chipText(l, false) }));
     wrap.append(list);
   }
   if (why) wrap.append(el('span', { class: 'obj-note', text: why }));
   return { show: wrap, text, sort: text };
 }
-const xc = (kind, label) => objCell(label, kind);
-const panel = (...kids) => addPanePortal(el('section', { class: 'panel stack' }, ...kids));
+const xc = (kind, label, obj) => objCell(label, kind, obj);
+// A second object in the same row (an email address, a sender, a member): the same link as the name, without the chips.
+function objLink(label, kind, obj = {}) {
+  const text = label == null || label === '' ? '' : String(label).replace(/^smtp:/i, '');
+  if (!text || text === DASH) return DASH;
+  return { show: nameLink(text, portalLinks(kind, obj).links, 'obj-link plain'), text, sort: text };
+}
+// Several objects in one cell (members, recipients): each one its own link.
+function objLinks(values, kind) {
+  const list = (Array.isArray(values) ? values : String(values || '').split(/[,;]\s*/)).map(v => String(v?.displayName || v?.name || v || '').trim()).filter(Boolean);
+  if (!list.length) return DASH;
+  const wrap = el('span', { class: 'obj-list' });
+  list.forEach((v, i) => { if (i) wrap.append(', '); wrap.append(nameLink(v, portalLinks(kind, isEmail(v) ? { upn: v } : { name: v }).links, 'obj-link plain')); });
+  return { show: wrap, text: list.join(', '), sort: list.join(', ') };
+}
+const isEmail = v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || ''));
+const panel = (...kids) => foldPane(addPanePortal(el('section', { class: 'panel stack' }, ...kids)));
+// Every pane on every page starts collapsed (owner rule, 2026-11-26 and again 2026-11-27: "On EVERY page I want the default
+// of collapsible sections to be collapsed. I want every section to be collapsible."). Expand or Collapse sits on the
+// pane's heading. A pane you expand stays expanded only while you stay on that page (Read again, a new search);
+// opening the page again, or reloading, starts every pane collapsed. Nothing is remembered in the browser.
+const PANE_ALIAS = { 'Mail flow lanes': 'Message path' };
+const paneMemory = { view: '', open: {} };
+try { localStorage.removeItem('ex360.panes.open'); } catch { /* storage blocked */ }
+function openPanes() {
+  const view = currentView();
+  if (paneMemory.view !== view) Object.assign(paneMemory, { view, open: {} });
+  return paneMemory.open;
+}
+function saveOpenPanes(map) { paneMemory.open = map; }
+function paneKey(title) {
+  // Counts in a heading ("Message trace search results: 12") change; the pane is the same.
+  const t = String(title).replace(/\d[\d,]*/g, '#').trim();
+  return `${currentView()}::${PANE_ALIAS[t] || t}`;
+}
+function foldPane(section) {
+  const head = section.querySelector(':scope > h2, :scope > .spread > h2, :scope > h3, :scope > .spread > h3');
+  if (!head || head.querySelector('.pane-fold')) return section;
+  const row = head.parentElement === section ? head : head.parentElement;
+  row.classList.add('pane-headrow');
+  const title = head.textContent;
+  const key = paneKey(title);
+  const btn = el('button', { class: 'btn sm pane-fold', type: 'button' });
+  const set = folded => {
+    section.classList.toggle('folded', folded);
+    btn.setAttribute('aria-expanded', String(!folded));
+    btn.textContent = folded ? '\u25B8 Expand' : '\u25BE Collapse';
+    btn.title = folded ? `Show the ${title} pane` : `Hide the ${title} pane`;
+  };
+  btn.addEventListener('click', () => {
+    const map = openPanes();
+    const folded = !section.classList.contains('folded');
+    if (folded) delete map[key]; else map[key] = true;
+    saveOpenPanes(map);
+    set(folded);
+  });
+  head.classList.add('pane-head');
+  head.append(btn);
+  set(!openPanes()[key]);
+  return section;
+}
 // Every pane links to the portal page for what it shows, right under its heading (lib/pane-portals.js).
 // Skipped: the loading panel, metric tiles, the "Where this is changed" block, and panes that already
 // carry their own portal button.
@@ -160,7 +255,10 @@ function table(headers, rows, options = {}) {
 }
 // details(row) gives [setting, value] pairs: selecting a row opens them in the flyout, the way the portal
 // opens an item. Facts that are not portal columns live there.
-function showRows(parent, value, headers, mapRow, empty, details) {
+// title: put the rows in their own collapsible pane with that heading (every pane folds, see foldPane).
+// lastPane(root) instead of root: add the rows to the pane just above them.
+function showRows(parent, value, headers, mapRow, empty, details, title) {
+  if (title) { const pane = panel(h2(title)); parent.append(pane); parent = pane; }
   const block = denied(value);
   if (block) { parent.append(callout(block)); return; }
   if (value && typeof value === 'object' && !Array.isArray(value) && value.ok === false) { parent.append(callout({ ...value, authorized: value.authorized !== false })); return; }
@@ -578,7 +676,7 @@ function renderDomains() {
     root.append(panel(h2('Accepted domains in Exchange'), p('Authoritative means every mailbox for the domain lives here; unknown addresses bounce. Internal relay means unknown addresses are passed on through a connector.'), showInto(rowsOrDenied('accepted'), ['Name', 'Accepted domain', 'Domain type'], d => [objCell(d.Name || d.DomainName, 'domain', { name: d.DomainName }), `${d.DomainName}${d.Default ? ' (default)' : ''}`, d.DomainType])));
     root.append(panel(h2('DKIM signing in Exchange Online'), showInto(rowsOrDenied('dkim'), ['Name', 'Toggle', 'Status'], d => [objCell(d.Domain, 'domain', { name: d.Domain }), d.Enabled ? 'Enabled' : 'Disabled', d.Status || '']), portalDetails(['dkim'])));
     root.append(panel(h2('Remote domains'), p('Settings for mail sent to other organizations: automatic replies, auto-forwarding and formats. The Default (*) entry covers every domain not listed.'), remoteDomainTable(rowsOrDenied('remote'))));
-  } else showRows(root, state.org?.remoteDomains, ['Name', 'Remote domain'], r => [xc('remoteDomain', r.name), r.domain], 'No remote domains.');
+  } else showRows(root, state.org?.remoteDomains, ['Name', 'Remote domain'], r => [xc('remoteDomain', r.name), r.domain], 'No remote domains.', undefined, 'Remote domains');
   root.append(portals('accepted-domains'), portals('remote-domains'), portals('spf-dmarc'), portals('dkim'));
   pageEl.replaceChildren(root);
 }
@@ -668,7 +766,7 @@ function renderRules() {
       const x = ruleListRow(r, now);
       return [
         x.status,
-        xc('transportRule', x.name),
+        xc('transportRule', x.name, { id: r.Guid }),
         x.priority ?? DASH,
         checkMark(x.stop),
         x.size ?? DASH,
@@ -794,7 +892,7 @@ function renderHealth() {
   root.append(panel(h2('Current status'), healthTable(state.org?.health?.services || state.org?.health)));
   const issues = state.org?.health?.issues;
   if (Array.isArray(issues) && issues.length) root.append(panel(h2('Active issues'), table(['Title', 'Affected services', 'Issue type', 'Status', 'Last updated'], issues.map(i => [objCell(i.title, 'healthIssue', { id: i.id }), i.service || DASH, i.classification ? (i.classification === 'incident' ? 'Incident' : 'Advisory') : DASH, HEALTH_WORDS[i.status] || i.status || DASH, i.lastModifiedDateTime ? { show: formatUtc(i.lastModifiedDateTime), text: formatUtc(i.lastModifiedDateTime), sort: toTime(i.lastModifiedDateTime) } : DASH]))));
-  root.append(panel(h2('Other status pages that affect mail flow'), table(['Page', 'When to use it', 'Sign-in'], HEALTH_SITES.map(site => [site.name, site.when, site.signIn])),
+  root.append(panel(h2('Other status pages that affect mail flow'), table(['Page', 'When to use it', 'Sign-in'], HEALTH_SITES.map(site => [{ show: el('a', { class: 'obj-link', href: site.url, target: '_blank', rel: 'noopener noreferrer', text: site.name }), text: site.name, sort: site.name }, site.when, site.signIn])),
     el('div', { class: 'row' }, ...HEALTH_SITES.map(site => open(site.url, `Open ${site.name}`)))));
   root.append(portals('service-health'));
   pageEl.replaceChildren(root);
@@ -880,7 +978,7 @@ function openRecipient(row) {
 // A search result: the name selects the recipient for every Single recipient page. The portal chips under it
 // still open the admin portals in a new tab.
 function pickCell(r) {
-  const cell = objCell(r.displayName, linkKindFor(r), { id: r.id, upn: r.primary, type: r.type });
+  const cell = objCell(r.displayName, linkKindFor(r), { id: r.guid || r.id, upn: r.primary, type: r.type });
   const name = cell.show.querySelector('.obj-link, .obj-name');
   const select = el('a', { class: 'obj-link pick-link', href: '#mb-recipient', title: `Open ${cell.text} in Ex360`, text: cell.text, onclick: event => { event.preventDefault(); event.stopPropagation(); openRecipient(r); } });
   if (name) name.replaceWith(select); else cell.show.prepend(select);
@@ -904,7 +1002,7 @@ function picker() {
     const rows = found.value || [];
     if (!rows.length) { list.append(note('No recipient matched. Search by the start of the display name or email address.')); return; }
     // Same columns as Exchange admin center > Recipients: Display name, Email address, Recipient type.
-    list.append(table(['Display name', 'Email address', 'Recipient type'], rows.map(r => [pickCell(r), r.primary, r.typeLabel || recipientType(r.type).label]), { onRowClick: i => openRecipient(rows[i]), rowLabel: i => `Open ${rows[i].displayName}` }));
+    list.append(table(['Display name', 'Email address', 'Recipient type'], rows.map(r => [pickCell(r), objLink(r.primary, linkKindFor(r), { id: r.guid || r.id, upn: r.primary, type: r.type }), r.typeLabel || recipientType(r.type).label]), { onRowClick: i => openRecipient(rows[i]), rowLabel: i => `Open ${rows[i].displayName}` }));
     if (found.skipped?.length) list.append(note(`Your sign-in could not search ${found.skipped.join(' and ')}, so those are not listed.`));
   };
   const current = mb() ? p(`Open now: ${mb().displayName} (${mb().primary}), ${mb().typeLabel || mb().type}.`, 'muted') : null;
@@ -976,12 +1074,12 @@ function loadReport(id, fresh = false) {
 const REPORT_WAIT_MS = 5 * 60 * 1000; // the server gives Exchange Online up to four minutes
 function reportSection(s) {
   const main = (s.portals?.[0] || portalsFor(panePortal(currentView(), s.title, recipientKind())))?.links?.[0];
-  return el('section', { class: 'panel stack report-section', id: `report-${s.id}` },
+  return foldPane(el('section', { class: 'panel stack report-section', id: `report-${s.id}` },
     el('h2', { text: s.title }),
     main ? el('div', { class: 'row pane-portal' }, el('a', { class: 'btn primary sm', href: main.url, target: '_blank', rel: 'noopener noreferrer', text: `Open in portal: ${main.name}` })) : null,
     s.intro ? el('p', { class: 'report-intro', text: s.intro }) : null,
     ...s.blocks.map(reportBlock),
-    reportPortals(s.portals));
+    reportPortals(s.portals)));
 }
 // A holder that fills in when the full mailbox read finishes. ids picks the report sections to show, in that
 // order; trim(section) may drop blocks or rows another page already shows.
@@ -996,7 +1094,7 @@ function reportSlot(ids, { trim, waiting } = {}) {
     if (!holder.isConnected) return;
     if (state.report?.id === id) state.report = null;
     const again = el('button', { class: 'btn', type: 'button', text: 'Try again' });
-    again.addEventListener('click', () => render());
+    again.addEventListener('click', () => busy(again, 'Reading again…', () => render()));
     holder.replaceChildren(callout({ label: 'Still no answer', message: 'The full mailbox read has not answered after five minutes. Exchange Online PowerShell is usually the slow part. Try again; if it stays like this, Setup steps shows whether Exchange Online PowerShell is connected.' }), el('div', { class: 'row' }, again));
   }, REPORT_WAIT_MS);
   loadReport(id).finally(() => clearTimeout(watchdog)).then(data => {
@@ -1072,12 +1170,12 @@ async function renderRecipient() {
   // General, in the order the admin center shows it. For a mailbox, licenses, size and limits come from the
   // full read below, so they are not repeated here.
   const selfKind = linkKindFor({ source: state.mailboxSource, type: mailbox.type });
-  const rows = [['Display name', objCell(mailbox.displayName, selfKind, { id: mailbox.id, upn: mailbox.primary, type: mailbox.type })], ['Primary email address', mailbox.primary], ['Recipient type', mailbox.typeLabel || mailbox.type]];
-  if (mailbox.externalAddress) rows.push(['External email address', mailbox.externalAddress]);
+  const rows = [['Display name', objCell(mailbox.displayName, selfKind, { id: mailbox.id, upn: mailbox.primary, type: mailbox.type })], ['Primary email address', objLink(mailbox.primary, selfKind, { id: mailbox.id, upn: mailbox.primary, type: mailbox.type })], ['Recipient type', mailbox.typeLabel || mailbox.type]];
+  if (mailbox.externalAddress) rows.push(['External email address', objLink(mailbox.externalAddress, 'address')]);
   if (mailbox.hidden != null && !isMailbox) rows.push(['Hidden from address lists', mailbox.hidden ? 'Yes' : 'No']);
   if (kind === 'mailuser') rows.push(['Licenses', (mailbox.licenses || []).join(', ') || 'None']);
   if (kind === 'm365group') rows.push(['Size', mailbox.size || DASH]);
-  if (kind === 'publicfolder') rows.push(['Forwards to', mailbox.forwarding?.smtp || 'Not set'], ['Also keeps a copy in the folder', mailbox.forwarding?.deliverAndForward ? 'Yes' : 'No']);
+  if (kind === 'publicfolder') rows.push(['Forwards to', mailbox.forwarding?.smtp ? objLink(mailbox.forwarding.smtp, 'address') : 'Not set'], ['Also keeps a copy in the folder', mailbox.forwarding?.deliverAndForward ? 'Yes' : 'No']);
   const traceLink = (field, text) => el('a', { class: 'btn primary', href: `#trace?${field}=${encodeURIComponent(mailbox.primary)}&days=10&run=1`, text });
   const status = el('p', { class: 'muted', role: 'status', 'aria-live': 'polite' });
   const reportId = mailbox.primary || mailbox.id;
@@ -1091,23 +1189,24 @@ async function renderRecipient() {
     const text = String(a);
     const [prefix, ...rest] = text.split(':');
     const kindOf = prefix === 'SMTP' ? 'Primary (replies come from this one)' : /^smtp$/i.test(prefix) ? 'Alias (also receives mail)' : /^x500$/i.test(prefix) ? 'X500 (keeps old replies working after a move)' : /^sip$/i.test(prefix) ? 'SIP (Teams)' : rest.length ? prefix : 'Address';
-    return [rest.join(':') || text, kindOf];
+    const address = rest.join(':') || text;
+    return [/^smtp$/i.test(prefix) ? objLink(address, selfKind, { id: mailbox.id, upn: mailbox.primary, type: mailbox.type }) : address, kindOf];
   });
   root.append(panel(h2('Email addresses'), p('Every address that delivers to this recipient.', 'muted'), aliases.length ? table(['Address', 'Kind'], aliases) : note('No addresses returned.')));
   if (kind === 'm365group' || kind === 'group' || kind === 'publicfolder') {
     // The admin center's group details: Owners, Members, then Settings (delivery management and membership approval).
     if (mailbox.groupError) root.append(callout(mailbox.groupError));
-    const memberRows = (value, error, empty) => rowsInto(error || value, ['Display name', 'Email address', 'Recipient type'], m => [objCell(m.name, m.id ? linkKindFor({ type: m.type }) : 'address', { id: m.id, upn: m.address, type: m.type }), m.address, recipientType(m.type).label], empty);
+    const memberRows = (value, error, empty) => rowsInto(error || value, ['Display name', 'Email address', 'Recipient type'], m => [objCell(m.name, m.id ? linkKindFor({ type: m.type }) : 'address', { id: m.id, upn: m.address, type: m.type }), objLink(m.address, m.id ? linkKindFor({ type: m.type }) : 'address', { id: m.id, upn: m.address, type: m.type }), recipientType(m.type).label], empty);
     if (Array.isArray(mailbox.owners) || mailbox.ownersError) root.append(panel(h2('Owners'), memberRows(mailbox.owners, mailbox.ownersError, 'This group has no owner.')));
     if (kind !== 'publicfolder') root.append(panel(h2('Members'), mailbox.type === 'DynamicDistributionGroup' && g?.recipientFilter ? p(`Membership is calculated from this filter: ${g.recipientFilter}`, 'muted') : null, memberRows(mailbox.members, mailbox.membersError, 'This group has no members.')));
     if (g) {
       const settings = [
         ['Who can send to this ' + (kind === 'publicfolder' ? 'folder' : 'group'), g.requireSenderAuth ? 'Only people inside the organization' : 'People inside and outside the organization'],
-        ['Only these senders', g.acceptOnlyFrom?.length ? g.acceptOnlyFrom.join(', ') : 'Anyone allowed above'],
+        ['Only these senders', g.acceptOnlyFrom?.length ? objLinks(g.acceptOnlyFrom, 'address') : 'Anyone allowed above'],
       ];
       if (kind === 'm365group') settings.push(['Privacy', g.privacy || DASH], ['Send copies of group conversations to members\' inboxes', g.subscribeNewMembers == null ? DASH : g.subscribeNewMembers ? 'Yes' : 'No']);
       if (g.memberJoin) settings.push(['Joining the group', g.memberJoin], ['Leaving the group', g.memberDepart || DASH]);
-      if (g.managedBy?.length) settings.push(['Managed by', g.managedBy.join(', ')]);
+      if (g.managedBy?.length) settings.push(['Managed by', objLinks(g.managedBy, 'address')]);
       root.append(panel(h2(kind === 'publicfolder' ? 'Delivery management' : 'Settings: delivery management and membership'), table(['Setting', 'Value'], settings)));
     }
   }
@@ -1116,6 +1215,10 @@ async function renderRecipient() {
   pageEl.replaceChildren(root);
 }
 // Like showInto, with the sentence to show when the read worked and returned nothing.
+function lastPane(root) {
+  const last = root.lastElementChild;
+  return last?.matches('section.panel') ? last : root;
+}
 function rowsInto(value, headers, mapRow, empty) {
   const holder = el('div');
   showRows(holder, value, headers, mapRow, empty);
@@ -1136,6 +1239,20 @@ function sevTag(severity) { return el('span', { class: `report-tag ${TAG_CLASS[s
 function settingsOf() { return state.org?.settings || {}; }
 function settingsError(name) { return state.org?.settingsErrors?.[name] || null; }
 function rowsOrDenied(name) { return settingsError(name) || settingsOf()[name] || null; }
+// A rule named somewhere else (a message trace event, a mailbox page): its Exchange Guid from the rules Ex360 already read.
+function ruleGuid(name) {
+  const rules = settingsOf().rules;
+  const want = String(name || '').trim().toLowerCase();
+  return want && Array.isArray(rules) ? rules.find(r => String(r.Name || '').trim().toLowerCase() === want)?.Guid || '' : '';
+}
+// Who a management role assignment goes to: a role group, a person or group, an app, or a role assignment policy.
+function assigneeKind(type) {
+  const t = String(type || '');
+  if (/RoleGroup/i.test(t)) return 'roleGroup';
+  if (/ServicePrincipal/i.test(t)) return 'servicePrincipal';
+  if (/RoleAssignmentPolicy/i.test(t)) return 'userRolePolicy';
+  return 'address';
+}
 const DASH = '—';
 const yn = v => (v === true || v === 'True' ? 'Yes' : v === false || v === 'False' ? 'No' : '—');
 const joined = v => (Array.isArray(v) ? v.filter(Boolean).join(', ') : v == null ? '' : String(v));
@@ -1281,14 +1398,21 @@ function renderRecipientList(id) {
       const rows = all.filter(r => matchesRecipient(r, input.value));
       if (!all.length) { out.replaceChildren(note(spec.empty)); return; }
       if (!rows.length) { out.replaceChildren(noMatch(id, input.value.trim(), all.length, data)); return; }
-      out.replaceChildren(table(spec.headers, rows.map(r => { const cells = spec.map(r); cells[0] = objCell(cells[0], spec.kind, { id: r.ExternalDirectoryObjectId, upn: r.PrimarySmtpAddress, type: r.RecipientTypeDetails }); return cells; }), {
+      out.replaceChildren(table(spec.headers, rows.map(r => {
+        const cells = spec.map(r);
+        const obj = { id: spec.kind === 'dynamicGroup' ? r.Guid : r.ExternalDirectoryObjectId, upn: r.PrimarySmtpAddress, type: r.RecipientTypeDetails };
+        cells[0] = objCell(cells[0], spec.kind, obj);
+        cells[1] = objLink(cells[1], spec.kind, obj);
+        if (spec.name === 'forwarding') cells[3] = objLink(cells[3], 'address');
+        return cells;
+      }), {
         search: true, searchLabel: spec.search, countLabel: ['recipient', 'recipients'],
         onRowClick: spec.details ? i => openDetails(rows[i].DisplayName || rows[i].PrimarySmtpAddress, table(['Setting', 'Value'], [['Email address', rows[i].PrimarySmtpAddress || DASH], ...spec.details(rows[i])])) : undefined,
       }));
       if (spec.note) out.append(note(spec.note));
     });
   });
-  const box = panel(form, out, portalDetails([spec.portal]));
+  const box = panel(h2(PAGES.find(pg => pg.id === id)?.title || 'Search'), form, out, portalDetails([spec.portal]));
   pageEl.replaceChildren(el('div', { class: 'stack' }, box));
   input.focus();
 }
@@ -1364,13 +1488,13 @@ function traceDetails(row, query) {
       el('h3', { text: 'Message events' }),
       events.length ? table(['Date', 'Event', 'Action', 'Detail', 'Time from previous event', 'What it means'], timeline, { countLabel: ['event', 'events'] }) : note('No events yet. Message trace can lag 5 to 10 minutes.'),
       hits.length ? el('h3', { text: 'Mail flow rules and DLP policies that acted on it' }) : null,
-      hits.length ? table(['Type', 'Name', 'Action taken', 'ID', ''], hits.map(h => [h.kind, h.rule ? `${h.name} (rule: ${h.rule})` : h.name || DASH, h.action || DASH, h.id || DASH, h.kind === 'Mail flow rule' && h.name ? { show: el('a', { class: 'btn sm', href: `#rules?rule=${encodeURIComponent(h.name)}`, text: 'Open this rule' }), text: '' } : h.kind === 'DLP policy' ? { show: el('a', { class: 'btn sm', href: '#dlp', text: 'Open DLP' }), text: '' } : ''])) : null,
+      hits.length ? table(['Type', 'Name', 'Action taken', 'ID', ''], hits.map(h => [h.kind, h.name ? objLink(h.rule ? `${h.name} (rule: ${h.rule})` : h.name, h.kind === 'DLP policy' ? 'dlp' : 'transportRule', { id: ruleGuid(h.name) }) : DASH, h.action || DASH, h.id || DASH, h.kind === 'Mail flow rule' && h.name ? { show: el('a', { class: 'btn sm', href: `#rules?rule=${encodeURIComponent(h.name)}`, text: 'Open this rule' }), text: '' } : h.kind === 'DLP policy' ? { show: el('a', { class: 'btn sm', href: '#dlp', text: 'Open DLP' }), text: '' } : ''])) : null,
       spam ? el('h3', { text: 'Spam filter verdict' }) : null,
       spam ? table(['Field', 'Value'], [['Spam confidence level (SCL)', spam.scl || DASH], ['Spam filter verdict (SFV)', spam.sfv || DASH], ['Category (CAT)', spam.cat || DASH], ['Sending country', spam.country || DASH]]) : null,
       el('h3', { text: 'More information' }),
       table(['Field', 'Value'], messageFacts(row, events)),
       el('h3', { text: `Related records (same Message ID): ${relatedRows.length}` }),
-      relatedRows.length ? table(['Date (UTC)', 'Recipient', 'Status', ''], relatedRows.map(r => [formatUtc(r.Received), r.RecipientAddress, { show: statusCell(r.Status), text: r.Status }, r.MessageTraceId === row.MessageTraceId && r.RecipientAddress === row.RecipientAddress ? 'This record' : { show: el('button', { class: 'btn sm', type: 'button', text: 'Open', onclick: () => traceDetails(r, query) }), text: '' }]), { countLabel: ['record', 'records'] }) : note(related.kind === 'error' ? `Related records were not read: ${related.message}` : 'Only this record.'),
+      relatedRows.length ? table(['Date (UTC)', 'Recipient', 'Status', ''], relatedRows.map(r => [formatUtc(r.Received), objLink(r.RecipientAddress, 'address'), { show: statusCell(r.Status), text: r.Status }, r.MessageTraceId === row.MessageTraceId && r.RecipientAddress === row.RecipientAddress ? 'This record' : { show: el('button', { class: 'btn sm', type: 'button', text: 'Open', onclick: () => traceDetails(r, query) }), text: '' }]), { countLabel: ['record', 'records'] }) : note(related.kind === 'error' ? `Related records were not read: ${related.message}` : 'Only this record.'),
       nexts.length ? el('h3', { text: 'What to check next' }) : null,
       nexts.length ? steps(nexts) : null,
       links,
@@ -1439,7 +1563,7 @@ async function renderTrace() {
       return;
     }
     const rows = result.rows.map(r => ({ ...r, source: data.source || (state.demo ? 'demo' : 'live') }));
-    const wrap = table(['Date', 'Sender', 'Recipient', 'Subject', 'Status'], rows.map(r => [{ show: formatUtc(r.Received), text: formatUtc(r.Received), sort: toTime(r.Received) }, r.SenderAddress || DASH, r.RecipientAddress || DASH, xc('message', r.Subject || '(no subject)'), { show: statusCell(r.Status), text: r.Status || '' }]), { onRowClick: i => traceDetails(rows[i], state.traceQuery), rowLabel: i => `Open details for ${rows[i].Subject || 'the message'} to ${rows[i].RecipientAddress}`, search: true, searchLabel: 'Search results', countLabel: ['message', 'messages'] });
+    const wrap = table(['Date', 'Sender', 'Recipient', 'Subject', 'Status'], rows.map(r => [{ show: formatUtc(r.Received), text: formatUtc(r.Received), sort: toTime(r.Received) }, objLink(r.SenderAddress, 'address'), objLink(r.RecipientAddress, 'address'), xc('message', r.Subject || '(no subject)'), { show: statusCell(r.Status), text: r.Status || '' }]), { onRowClick: i => traceDetails(rows[i], state.traceQuery), rowLabel: i => `Open details for ${rows[i].Subject || 'the message'} to ${rows[i].RecipientAddress}`, search: true, searchLabel: 'Search results', countLabel: ['message', 'messages'] });
     out.replaceChildren(panel(h2(`Message trace search results: ${rows.length}`), p('Newest first, like the portal. Dates are in UTC. Select a message to open its details.', 'muted'), wrap, rows.length >= 200 ? note('Showing the first 200. Narrow the search to see the rest.') : null, ranBlock(data, 'The command Ex360 ran')));
   };
   let portalBox = portals('message-trace', state.traceQuery ? traceCommand(state.traceQuery) : '');
@@ -1450,6 +1574,26 @@ async function renderTrace() {
   else showResults();
 }
 
+function quarantineNodes(data) {
+  if (denied(data) || (data.ok === false && !data.commands)) { return [callout(denied(data) || { label: 'Quarantine', message: data.message || '', authorized: true })]; }
+  const cmd = (data.commands || []).find(c => c.name === 'messages');
+  if (cmd && cmd.ok === false) { return [callout({ label: /not authorized|denied/i.test(cmd.error || '') ? 'Not authorized' : 'Quarantine', message: `${cmd.error || ''} Reading quarantine needs Security Reader, Quarantine Administrator or Security Administrator.`, authorized: !/not authorized|denied/i.test(cmd.error || '') })]; }
+  const rows = cmd?.value || [];
+  const summary = quarantineSummary(rows);
+  return [
+    panel(h2(`${rows.length} quarantined message${rows.length === 1 ? '' : 's'}`), summary.length ? p(summary.map(([k, n]) => `${k}: ${n}`).join(' · ')) : note('Nothing in quarantine for this search.')),
+    // Defender portal > Quarantine > Email: the default columns, in the portal's order. Ex360's plain-words
+    // explanation (who can release it, which policy) opens in the flyout when a row is selected.
+    rows.length ? panel(h2('Quarantined messages'), table(['Time received', 'Subject', 'Sender', 'Quarantine reason', 'Release status', 'Policy type', 'Expires', 'Recipient', 'Sender address override reason', 'Released by'], rows.map(r => [
+      r.ReceivedTime ? { show: formatUtc(r.ReceivedTime), text: formatUtc(r.ReceivedTime), sort: toTime(r.ReceivedTime) } : DASH,
+      xc('quarantineMessage', r.Subject || '(no subject)'), objLink(r.SenderAddress, 'address'), r.QuarantineTypes || r.Type || DASH, r.ReleaseStatus || DASH, r.PolicyType || DASH,
+      r.Expires ? { show: formatUtc(r.Expires), text: formatUtc(r.Expires), sort: toTime(r.Expires) } : DASH,
+      objLinks(r.RecipientAddress, 'address'), r.OverrideReason || 'None', objLinks(r.ReleasedUser, 'address')]), {
+      onRowClick: i => { const r = rows[i]; const x = explainQuarantine(r); openDetails(r.Subject || '(no subject)', table(['Field', 'Value'], [['Why it was held', x.reason], ['Policy', x.policy || DASH], ['Who can release it', x.release], ['Policy name', r.PolicyName || DASH], ['Mail direction', r.Direction || DASH], ['Message ID', r.MessageId || DASH]])); },
+      rowLabel: i => `Open details for ${rows[i].Subject || 'the message'}`, countLabel: ['message', 'messages'] })) : null,
+    note('Ex360 only reads. Release, preview, delete and "report as not junk" are done in the Defender portal by someone with a quarantine role.'),
+  ];
+}
 async function renderQuarantine() {
   const root = el('div', { class: 'stack' });
   const qq = state.quarantineQuery || {};
@@ -1465,24 +1609,7 @@ async function renderQuarantine() {
     if (state.demo) qs.set('demo', '1');
     state.quarantineQuery = Object.fromEntries(qs.entries());
     const data = await get(`/api/quarantine?${qs}`);
-    if (denied(data) || (data.ok === false && !data.commands)) { out.replaceChildren(callout(denied(data) || { label: 'Quarantine', message: data.message || '', authorized: true })); return; }
-    const cmd = (data.commands || []).find(c => c.name === 'messages');
-    if (cmd && cmd.ok === false) { out.replaceChildren(callout({ label: /not authorized|denied/i.test(cmd.error || '') ? 'Not authorized' : 'Quarantine', message: `${cmd.error || ''} Reading quarantine needs Security Reader, Quarantine Administrator or Security Administrator.`, authorized: !/not authorized|denied/i.test(cmd.error || '') })); return; }
-    const rows = cmd?.value || [];
-    const summary = quarantineSummary(rows);
-    out.replaceChildren(
-      panel(h2(`${rows.length} quarantined message${rows.length === 1 ? '' : 's'}`), summary.length ? p(summary.map(([k, n]) => `${k}: ${n}`).join(' · ')) : note('Nothing in quarantine for this search.')),
-      // Defender portal > Quarantine > Email: the default columns, in the portal's order. Ex360's plain-words
-      // explanation (who can release it, which policy) opens in the flyout when a row is selected.
-      rows.length ? panel(table(['Time received', 'Subject', 'Sender', 'Quarantine reason', 'Release status', 'Policy type', 'Expires', 'Recipient', 'Sender address override reason', 'Released by'], rows.map(r => [
-        r.ReceivedTime ? { show: formatUtc(r.ReceivedTime), text: formatUtc(r.ReceivedTime), sort: toTime(r.ReceivedTime) } : DASH,
-        xc('quarantineMessage', r.Subject || '(no subject)'), r.SenderAddress || DASH, r.QuarantineTypes || r.Type || DASH, r.ReleaseStatus || DASH, r.PolicyType || DASH,
-        r.Expires ? { show: formatUtc(r.Expires), text: formatUtc(r.Expires), sort: toTime(r.Expires) } : DASH,
-        joined(r.RecipientAddress) || DASH, r.OverrideReason || 'None', joined(r.ReleasedUser) || DASH]), {
-        onRowClick: i => { const r = rows[i]; const x = explainQuarantine(r); openDetails(r.Subject || '(no subject)', table(['Field', 'Value'], [['Why it was held', x.reason], ['Policy', x.policy || DASH], ['Who can release it', x.release], ['Policy name', r.PolicyName || DASH], ['Mail direction', r.Direction || DASH], ['Message ID', r.MessageId || DASH]])); },
-        rowLabel: i => `Open details for ${rows[i].Subject || 'the message'}`, countLabel: ['message', 'messages'] })) : null,
-      note('Ex360 only reads. Release, preview, delete and "report as not junk" are done in the Defender portal by someone with a quarantine role.'),
-    );
+    out.replaceChildren(...quarantineNodes(data).filter(Boolean));
   });
   form.addEventListener('submit', event => { event.preventDefault(); load(); });
   root.append(panel(h2('Search quarantine'), form), out, portals('quarantine-messages'), portals('quarantine'));
@@ -1517,6 +1644,126 @@ function policyTable(kind, policyRows, ruleRows, policyKey) {
   return holder;
 }
 
+// ---- Single recipient pages added 2026-11-26: Licenses and service plans, Calendar and folder permissions,
+// Mobile devices, Message trace, Quarantine and Admin changes. Each reads only the recipient open on Recipient.
+// Logs (trace, quarantine, audit) and the slow folder read wait for a button; licenses and devices read on open.
+const extraCache = {};
+const extraKey = what => `${what}:${mb()?.primary || ''}`;
+function readExtra(what) {
+  return safeGet(`/api/recipient-extra?what=${what}&address=${encodeURIComponent(mb().primary || '')}&id=${encodeURIComponent(mb().id || '')}${demoAnd()}`);
+}
+function extraFailed(res) {
+  if (!res) return null;
+  const block = denied(res);
+  if (block) return callout(block);
+  if (res.ok === false) return callout({ ...res, label: res.label || 'Could not read', authorized: res.authorized !== false });
+  return null;
+}
+// A pane with one Read button. Once read, the button reads again; the result stays while you move between pages.
+function readPane(title, intro, what, label, busyLabel, load, extra = []) {
+  const key = extraKey(what);
+  const button = el('button', { class: 'btn primary', type: 'button', text: extraCache[key] ? 'Read again' : label });
+  button.addEventListener('click', () => busy(button, busyLabel, async () => { extraCache[key] = await load(); }).then(() => render()));
+  return { pane: panel(h2(title), p(intro, 'muted'), el('div', { class: 'row' }, button, ...extra)), result: extraCache[key] };
+}
+// Reads that start on their own when the page opens, with a loading line until they answer.
+function autoRead(root, what, draw) {
+  const key = extraKey(what);
+  const holder = el('div', { class: 'stack' });
+  root.append(holder);
+  if (extraCache[key]) { draw(holder, extraCache[key]); return; }
+  holder.append(panel(h2('Reading'), el('p', { class: 'loading', text: state.demo ? 'Reading the Contoso demo data…' : 'Reading as you. Nothing is changed.' })));
+  readExtra(what).then(res => { extraCache[key] = res; if (holder.isConnected) { holder.replaceChildren(); draw(holder, res); } }).catch(() => {});
+}
+function tracePane(title, data, role, who) {
+  const result = traceOutcome(data || {});
+  if (result.kind === 'denied') return panel(h2(title), callout(denied(result.value) || result.value));
+  if (result.kind === 'error') return panel(h2(title), callout({ label: 'Message trace failed', message: result.message, authorized: true }), note('This is an error, not an empty result.'));
+  const rows = result.kind === 'empty' ? [] : result.rows.map(r => ({ ...r, source: data.source || (state.demo ? 'demo' : 'live') }));
+  if (!rows.length) return panel(h2(`${title}: 0`), note(`No messages ${role === 'recipient' ? 'to' : 'from'} ${who} in the last 10 days.`));
+  return panel(h2(`${title}: ${rows.length}`), table(['Date', 'Sender', 'Recipient', 'Subject', 'Status'], rows.map(r => [{ show: formatUtc(r.Received), text: formatUtc(r.Received), sort: toTime(r.Received) }, objLink(r.SenderAddress, 'address'), objLink(r.RecipientAddress, 'address'), xc('message', r.Subject || '(no subject)'), { show: statusCell(r.Status), text: r.Status || '' }]), { onRowClick: i => traceDetails(rows[i], data.query || {}), rowLabel: i => `Open details for ${rows[i].Subject || 'the message'}`, search: true, searchLabel: 'Search results', countLabel: ['message', 'messages'] }), rows.length >= 200 ? note('Showing the first 200. Trace a message narrows the search.') : null);
+}
+const extraViews = {
+  'mb-licenses': () => guard(root => {
+    autoRead(root, 'licenses', (holder, res) => {
+      const failed = extraFailed(res);
+      if (failed) { holder.append(panel(h2('Licenses'), failed)); return; }
+      const lics = res.value || [];
+      // Microsoft 365 admin center > Users > a user > Licenses and apps: the license, then every app (service plan) with its switch.
+      holder.append(panel(h2(`Licenses: ${lics.length}`), lics.length ? table(['License', 'Assigned', 'Service plans on', 'Problem'], lics.map(l => [xc('sku', l.name, { skuId: l.skuId }), l.assigned, `${l.plans.filter(pl => pl.status === 'Success').length} of ${l.plans.length}`, l.error || 'None'])) : note('No licenses are assigned. A user mailbox needs an Exchange Online license within 30 days; shared, room and equipment mailboxes do not.')));
+      for (const l of lics) {
+        holder.append(panel(h2(`Service plans in ${l.name}`), table(['Service plan', 'Status', 'Applies to', 'Mail related'], l.plans.map(pl => [pl.name === pl.part ? pl.part : `${pl.name} (${pl.part})`, PLAN_STATUS_WORDS[pl.status] || pl.status || DASH, pl.appliesTo || DASH, pl.email ? 'Yes' : 'No']), { countLabel: ['plan', 'plans'] })));
+      }
+    });
+    root.append(portals('user-account'), portals('licenses'));
+  }),
+  'mb-folders': () => guard((root, box) => {
+    const { pane, result } = readPane('Calendar and folder permissions', `Who has rights on ${box.displayName}'s own folders (Get-MailboxFolderPermission on up to 60 folders, starting with the Calendar). "Default" is everyone in the organization; "Anonymous" is anyone outside it. This can take a minute or two.`, 'folders', 'Read folder permissions', 'Reading folders…', () => readExtra('folders'));
+    root.append(pane);
+    if (result) {
+      const failed = extraFailed(result);
+      if (failed) root.append(panel(h2('Folder permissions'), failed));
+      else {
+        const all = result.value || [];
+        const shown = all.filter(r => r.folderType === 'Calendar' || !(/^(Default|Anonymous)$/i.test(r.user) && /^None$/i.test(r.rights)));
+        const people = new Set(shown.filter(r => !/^(Default|Anonymous)$/i.test(r.user) && !/^None$/i.test(r.rights)).map(r => r.user));
+        root.append(panel(h2(`Shared folders: ${new Set(shown.map(r => r.folder)).size}`),
+          p(`${people.size} ${people.size === 1 ? 'person has' : 'people have'} rights on at least one folder. Folders where only Default and Anonymous have None are left out; the Calendar is always listed.`, 'muted'),
+          shown.length ? table(['Folder', 'User', 'Permission', 'Sharing'], shown.map(r => [r.folder, r.user, r.rights, r.flags || DASH]), { countLabel: ['permission', 'permissions'] }) : note('No folder is shared with anyone.')));
+      }
+    }
+    root.append(portals('folder-permissions'));
+  }),
+  'mb-devices': () => guard(root => {
+    autoRead(root, 'devices', (holder, res) => {
+      const failed = extraFailed(res);
+      if (failed) { holder.append(panel(h2('Mobile devices'), failed)); return; }
+      const rows = res.value || [];
+      // Exchange admin center > Mailboxes > a mailbox > Mobile devices.
+      holder.append(panel(h2(`Mobile devices: ${rows.length}`), rows.length ? table(['Device', 'Device model', 'Device OS', 'App', 'Access state', 'First sync'], rows.map(d => [d.name, d.model || DASH, d.os || DASH, d.app || DASH, d.access || DASH, d.firstSync ? { show: formatUtc(d.firstSync), text: formatUtc(d.firstSync), sort: toTime(d.firstSync) } : DASH]), { onRowClick: i => { const d = rows[i]; openDetails(d.name, table(['Setting', 'Value'], [['Device ID', d.deviceId || DASH], ['Device type', d.type || DASH], ['Why this access state', d.reason || DASH], ['Last changed', d.changed ? formatUtc(d.changed) : DASH]])); }, rowLabel: i => `Open ${rows[i].name}`, countLabel: ['device', 'devices'] }) : note('No phone or tablet has synced with this mailbox.')));
+    });
+    root.append(portals('mobile-devices'), portals('owa-mobile'));
+  }),
+  'mb-messages': () => guard((root, box) => {
+    const who = box.primary;
+    const q = role => new URLSearchParams({ [role]: who, days: '10', ...(state.demo ? { demo: '1' } : {}) });
+    const { pane, result } = readPane('Message trace for this recipient', `Mail ${box.displayName} received and sent in the last 10 days, the most Get-MessageTraceV2 returns. Nothing is read until you ask. Select a message for every hop.`, 'trace', 'Read message trace', 'Reading message trace…',
+      async () => { const [inbound, outbound] = await Promise.all([safeGet(`/api/trace?${q('recipient')}`), safeGet(`/api/trace?${q('sender')}`)]); return { inbound, outbound }; },
+      [el('a', { class: 'btn', href: `#trace?recipient=${encodeURIComponent(who)}&days=10&run=1`, text: 'Open in Trace a message' })]);
+    root.append(pane);
+    if (result) root.append(tracePane('Received', result.inbound, 'recipient', who), tracePane('Sent', result.outbound, 'sender', who));
+    root.append(portals('message-trace', `Get-MessageTraceV2 -RecipientAddress ${who} -StartDate (Get-Date).AddDays(-10) -EndDate (Get-Date)\nGet-MessageTraceV2 -SenderAddress ${who} -StartDate (Get-Date).AddDays(-10) -EndDate (Get-Date)`));
+  }),
+  'mb-quarantine': () => guard((root, box) => {
+    const who = box.primary;
+    const { pane, result } = readPane('Quarantine for this recipient', `Messages held for ${box.displayName} in the last 30 days, why each was held and who can release it. Nothing is read until you ask. Ex360 only reads; release and delete are done in the Defender portal.`, 'quarantine', 'Read quarantine', 'Reading quarantine…',
+      () => safeGet(`/api/quarantine?recipient=${encodeURIComponent(who)}&days=30${demoAnd()}`),
+      [el('a', { class: 'btn', href: '#quarantine', text: 'Open quarantine for the whole organization' })]);
+    root.append(pane);
+    if (result) root.append(...quarantineNodes(result).filter(Boolean));
+    root.append(portals('quarantine-messages', `Get-QuarantineMessage -RecipientAddress ${who} -StartReceivedDate (Get-Date).AddDays(-30) -EndReceivedDate (Get-Date)`));
+  }),
+  'mb-changes': () => guard((root, box) => {
+    const { pane, result } = readPane('Admin changes made to this recipient', `Changes admins made to ${box.displayName}: Exchange settings from the admin audit log (last 90 days, Search-AdminAuditLog -ObjectIds) and directory changes from the Microsoft Entra audit log (licenses, groups, passwords, roles). Nothing is read until you ask.`, 'audit', 'Read admin changes', 'Searching changes…', () => readExtra('audit'));
+    root.append(pane);
+    if (result) {
+      const failed = extraFailed(result);
+      if (failed) root.append(panel(h2('Admin changes'), failed));
+      else {
+        const ex = result.exchange || {};
+        const exFail = extraFailed(ex);
+        const exRows = ex.value || [];
+        root.append(panel(h2(`Exchange admin changes: ${exRows.length}`), exFail || (exRows.length ? table(['Date (UTC)', 'Who', 'Cmdlet', 'Succeeded'], exRows.map(r => [{ show: formatUtc(r.when), text: formatUtc(r.when), sort: toTime(r.when) }, objLink(r.who, 'address'), r.cmdlet, r.succeeded]), { onRowClick: i => openDetails(`${exRows[i].cmdlet} on ${exRows[i].object || box.displayName}`, table(['Setting', 'Value'], [['When', formatUtc(exRows[i].when)], ['Who', exRows[i].who || DASH], ['Object', exRows[i].object || DASH], ['Parameters', exRows[i].parameters || DASH]])), rowLabel: i => `Open ${exRows[i].cmdlet}`, countLabel: ['change', 'changes'] }) : note('No Exchange admin changed this recipient in the last 90 days.'))));
+        const dir = result.directory || {};
+        const dirFail = extraFailed(dir);
+        const dirRows = dir.value || [];
+        root.append(panel(h2(`Microsoft Entra changes: ${dirRows.length}`), dirFail || (dirRows.length ? table(['Date', 'Service', 'Category', 'Activity', 'Status', 'Initiated by (actor)'], dirRows.map(r => [{ show: formatUtc(r.when), text: formatUtc(r.when), sort: toTime(r.when) }, r.service || DASH, r.category || DASH, r.activity || DASH, r.result || DASH, r.who || DASH]), { countLabel: ['change', 'changes'] }) : note(recipientKind() === 'mailbox' || recipientKind() === 'mailuser' ? 'No directory changes to this user in the Entra audit log (it keeps 30 days with Entra ID P1, 7 days without).' : 'The Entra audit log is searched for user accounts only.'))));
+      }
+    }
+    root.append(portals('changes'), portals('audit'));
+  }),
+};
+
 const views = {
   setup: renderSetup,
   start: renderStart,
@@ -1528,7 +1775,8 @@ const views = {
   review: renderReview,
   ...Object.fromEntries(Object.keys(RECIPIENT_LISTS).map(id => [id, () => renderRecipientList(id)])),
   trace: renderTrace,
-  nexthop: () => renderNextHop({ el, panel, h2, p, note, table, busy, flash, objCell, pageEl, steps, session: state.session }),
+  nexthop: () => renderNextHop({ el, panel, h2, p, note, table, busy, flash, objCell, pageEl, steps, session: state.session, recipient: mb() ? { ...mb(), kind: recipientKind() } : null, picker: (state.demo || state.session.signedIn) ? picker : null, notApplicable: () => (mb() ? notApplicable('nexthop') : null) }),
+  snapshots: () => renderSnapshots({ el, panel, h2, p, note, table, busy, pageEl, session: state.session }),
   quarantine: renderQuarantine,
   licenses: renderLicenses,
   domains: renderDomains,
@@ -1562,13 +1810,14 @@ const views = {
   'mb-ca': renderMbCa,
   'mb-xdr': renderMbXdr,
   'mb-recipient': renderRecipient,
+  ...extraViews,
   'mb-forward': () => guard((root, mailbox) => {
     root.append(panel(h2('Mailbox forwarding'), table(['Forward to', 'Also keep a copy'], [[mailbox.forwarding?.smtp || 'Not set', mailbox.forwarding?.deliverAndForward ? 'Yes' : 'No']])));
-    showRows(root, mailbox.inboxError || mailbox.inboxRules, ['Rule', 'Enabled', 'What it does'], r => [xc('inboxRule', r.name), r.enabled ? 'Yes' : 'No', r.description], 'This mailbox has no inbox rules.');
+    showRows(root, mailbox.inboxError || mailbox.inboxRules, ['Rule', 'Enabled', 'What it does'], r => [xc('inboxRule', r.name), r.enabled ? 'Yes' : 'No', r.description], 'This mailbox has no inbox rules.', undefined, 'Inbox rules');
     root.append(portals('forwarding'));
   }),
   'mb-rules': () => guard((root, mailbox) => {
-    showRows(root, mailbox.inboxError || mailbox.inboxRules, ['Rule', 'Enabled', 'What it does'], r => [xc('inboxRule', r.name), r.enabled ? 'Yes' : 'No', r.description], 'This mailbox has no inbox rules.');
+    showRows(root, mailbox.inboxError || mailbox.inboxRules, ['Rule', 'Enabled', 'What it does'], r => [xc('inboxRule', r.name), r.enabled ? 'Yes' : 'No', r.description], 'This mailbox has no inbox rules.', undefined, 'Inbox rules');
     // The mailbox Junk Email settings, from the full mailbox read (the rules table above is not repeated).
     root.append(reportSlot(['rules'], { trim: sec => ({ ...sec, title: 'Junk email settings', intro: 'The Junk Email settings inside this mailbox.', blocks: sec.blocks.filter(b => b.type === 'facts' || (b.type === 'denied' && /junk/i.test(b.message || ''))) }) }));
     root.append(portals('forwarding'));
@@ -1595,7 +1844,7 @@ const views = {
     root.append(portals('delegation'));
   }),
   'mb-groups': () => guard((root, mailbox) => {
-    showRows(root, mailbox.memberError || mailbox.memberOf, ['Group'], g => [objCell(g.name || g.id, g.kind === 'm365' ? 'm365group' : 'group', { id: g.id, type: g.kind })], 'This recipient is not a member of any group.');
+    showRows(root, mailbox.memberError || mailbox.memberOf, ['Group'], g => [objCell(g.name || g.id, g.kind === 'm365' ? 'm365group' : 'group', { id: g.id, type: g.kind })], 'This recipient is not a member of any group.', undefined, 'Member of');
     root.append(portals('groups'));
   }),
   'mb-policies': () => guard((root, mailbox, box) => {
@@ -1608,10 +1857,10 @@ const views = {
     if (!state.demo) root.append(el('div', { class: 'callout warn' }, el('strong', { text: 'Organization defaults only' }), p(`Ex360 matches live policies to mailboxes. For a ${KIND_WORDS[recipientKind()] || 'recipient'} this page shows the defaults; the mail flow rules that name it are on Mail flow rules.`), el('a', { class: 'btn primary', href: '#rules', text: 'Open Mail flow rules' })));
     const policies = box.policies || {};
     if (policies.preset) root.append(el('div', { class: 'callout' }, el('strong', { text: policies.preset.name }), p(policies.preset.why)));
-    const rows = Object.values(policies.policies || {});
-    root.append(panel(h2('Security policies'), table(['Kind', 'Applies', 'Why'], rows.map(r => [r.kind, r.applies || r.license || '', r.why]))));
+    const rows = Object.entries(policies.policies || {});
+    root.append(panel(h2('Security policies'), table(['Kind', 'Applies', 'Why'], rows.map(([key, r]) => [objCell(r.kind, key), r.applies ? objLink(r.applies, key) : r.license || '', r.why]))));
     root.append(panel(h2('Quarantine'), p(policies.quarantine?.why || '')));
-    root.append(panel(h2('Transport rules, in priority order'), table(['Priority', 'Rule', 'Applies', 'Why'], (box.rules || []).map(r => [r.priority, xc('transportRule', r.name), r.applies ? 'Yes' : 'No', r.why]))));
+    root.append(panel(h2('Transport rules, in priority order'), table(['Priority', 'Rule', 'Applies', 'Why'], (box.rules || []).map(r => [r.priority, xc('transportRule', r.name, { id: ruleGuid(r.name) }), r.applies ? 'Yes' : 'No', r.why]))));
     root.append(panel(h2('Connectors'), table(['Connector', 'Applies', 'Why'], (box.connectors || []).map(c => [xc('connector', c.name), c.applies ? 'Yes' : 'No', c.why]))));
     root.append(panel(h2('Holds'), table(['Flag', 'On'], [['Litigation hold', mailbox.litigationHold ? 'Yes' : 'No'], ['Retention hold', mailbox.retentionHold ? 'Yes' : 'No'], ['Retention policy', mailbox.retentionPolicy || '']])));
     root.append(portals('anti-spam'), portals('transport-rules'), portals('retention'));
@@ -1649,10 +1898,10 @@ const views = {
           const shown = showAll ? all : all.slice(0, SIGNINS_SHOWN);
           holder.replaceChildren();
           // Microsoft Entra admin center > Sign-in logs default columns.
-          showRows(holder, shown, ['Date', 'Request ID', 'User principal name', 'Application', 'Status', 'IP address', 'Resource', 'Resource ID', 'Conditional access', 'User'], r => [objCell(formatUtc(r.time || r.createdDateTime), 'signIn', { id: r.id }), r.id || DASH, r.userPrincipalName || r.user || DASH, r.app || r.appDisplayName || DASH, signInStatus(r), r.ip || r.ipAddress || DASH, r.resourceDisplayName || DASH, r.resourceId || DASH, CA_WORDS[r.conditionalAccessStatus] || r.conditionalAccessStatus || DASH, r.userDisplayName || DASH], 'No sign-ins in this window.', r => [['Location', [r.location?.city, r.location?.state, r.location?.countryOrRegion].filter(Boolean).join(', ') || r.locationText || '']]);
+          showRows(holder, shown, ['Date', 'Request ID', 'User principal name', 'Application', 'Status', 'IP address', 'Resource', 'Resource ID', 'Conditional access', 'User'], r => [objCell(formatUtc(r.time || r.createdDateTime), 'signIn', { id: r.id }), r.id || DASH, objLink(r.userPrincipalName || r.user, 'user', { id: r.userId, upn: r.userPrincipalName || r.user }), objLink(r.app || r.appDisplayName, 'servicePrincipal', { appId: r.appId }), signInStatus(r), r.ip || r.ipAddress || DASH, objLink(r.resourceDisplayName, 'servicePrincipal', { appId: r.resourceId }), r.resourceId || DASH, CA_WORDS[r.conditionalAccessStatus] || r.conditionalAccessStatus || DASH, objLink(r.userDisplayName, 'user', { id: r.userId, upn: r.userPrincipalName })], 'No sign-ins in this window.', r => [['Location', [r.location?.city, r.location?.state, r.location?.countryOrRegion].filter(Boolean).join(', ') || r.locationText || '']], 'Sign-ins');
           if (all.length > SIGNINS_SHOWN) {
             const more = el('button', { class: 'btn', type: 'button', text: showAll ? `Show the last ${SIGNINS_SHOWN} only` : `Show all ${all.length}` });
-            more.addEventListener('click', () => draw(!showAll));
+            more.addEventListener('click', () => busy(more, showAll ? 'Showing fewer…' : 'Showing all…', async () => { await new Promise(r => setTimeout(r, 120)); draw(!showAll); }));
             holder.append(note(showAll ? `Showing all ${all.length} sign-ins Ex360 read, newest first.` : `Showing the last ${SIGNINS_SHOWN} of ${all.length}, newest first.`), el('div', { class: 'row' }, more));
           }
         };
@@ -1759,9 +2008,9 @@ async function renderOutlook() {
       ['Bitness', report.outlook?.bitness || ''],
       ['Autodiscover', report.autodiscover?.result || report.autodiscover?.host || ''],
     ])));
-    showRows(root, report.profiles, ['Profile', 'Cached', 'OST', 'Bytes'], r => [r.name, r.cached ? 'Yes' : 'No', r.ost, r.ostBytes]);
-    showRows(root, report.addins, ['Add-in', 'Where'], r => [r.name, r.location]);
-    showRows(root, report.connectivity, ['Target', 'Reachable'], r => [r.target, r.ok ? 'Yes' : 'No']);
+    showRows(root, report.profiles, ['Profile', 'Cached', 'OST', 'Bytes'], r => [r.name, r.cached ? 'Yes' : 'No', r.ost, r.ostBytes], undefined, undefined, 'Outlook profiles');
+    showRows(root, report.addins, ['Add-in', 'Where'], r => [r.name, r.location], undefined, undefined, 'Add-ins');
+    showRows(root, report.connectivity, ['Target', 'Reachable'], r => [r.target, r.ok ? 'Yes' : 'No'], undefined, undefined, 'Connectivity');
   }
   pageEl.replaceChildren(root);
 }
@@ -1771,14 +2020,14 @@ async function renderMigrations() {
   const root = el('div', { class: 'stack' });
   const moves = data.migrations?.moves || data.migrations;
   root.append(panel(h2('Endpoints'), grantLinks()));
-  showRows(root, asRows(data.migrations?.endpoints || data.migrations), ['Name', 'Type', 'Associated administrator'], r => [xc('migration', r.name || r.Identity), r.type || r.EndpointType, r.admin || r.Username || ''], 'No migration endpoints.', r => [['Remote server', r.remote || r.RemoteServer]]);
+  showRows(lastPane(root), asRows(data.migrations?.endpoints || data.migrations), ['Name', 'Type', 'Associated administrator'], r => [xc('migration', r.name || r.Identity), r.type || r.EndpointType, r.admin || r.Username || ''], 'No migration endpoints.', r => [['Remote server', r.remote || r.RemoteServer]]);
   // Exchange admin center > Migration > Migration batches: Name, Status, Data consistency score, Percentage synced, Total, Synced, Finalized, Failed.
   showRows(root, asRows(data.migrations?.batches), ['Name', 'Status', 'Data consistency score', 'Percentage synced', 'Total', 'Synced', 'Finalized', 'Failed'], r => {
     const total = Number(r.total ?? r.TotalCount ?? 0);
     const synced = Number(r.synced ?? r.SyncedCount ?? 0);
     return [xc('migration', r.name || r.Identity), r.status || r.Status || DASH, r.DataConsistencyScore || r.dataConsistencyScore || DASH, total ? `${Math.round((synced / total) * 100)}%` : DASH, total, synced, r.finalized ?? r.FinalizedCount ?? 0, r.failed ?? r.FailedCount ?? 0];
-  }, 'No batches.');
-  showRows(root, asRows(moves), ['Mailbox', 'Status'], r => [xc('migration', r.mailbox || r.DisplayName || r.Identity), r.status || r.Status], 'No move requests.');
+  }, 'No batches.', undefined, 'Migration batches');
+  showRows(root, asRows(moves), ['Mailbox', 'Status'], r => [xc('migration', r.mailbox || r.DisplayName || r.Identity), r.status || r.Status], 'No move requests.', undefined, 'Move requests');
   root.append(portals('migrations'), portals('support'));
   pageEl.replaceChildren(root);
 }
@@ -1804,7 +2053,7 @@ async function renderAdminRoles() {
         const g = groups[i];
         openDetails(g.Name || g.name, p(g.Description || ''),
           el('h3', { text: 'Assigned roles' }), table(['Role'], names(g.Roles).map(r => [r])),
-          el('h3', { text: 'Members' }), names(g.Members || g.members).length ? table(['Member'], names(g.Members || g.members).map(m => [m])) : note('No members.'),
+          el('h3', { text: 'Members' }), names(g.Members || g.members).length ? table(['Member'], names(g.Members || g.members).map(m => [objLink(m, 'address')])) : note('No members.'),
           el('h3', { text: 'Managed by' }), p(names(g.ManagedBy).join(', ') || DASH));
       },
     }));
@@ -1813,7 +2062,7 @@ async function renderAdminRoles() {
   const entra = data.entraRoles?.value || data.entraRoles;
   const entraPanel = panel(h2('Microsoft Entra roles that reach Exchange Online'), note('Only the directory roles that grant Exchange, Defender for Office 365 or Purview access to email. The full list is in the Microsoft Entra admin center. Only roles with at least one member, or activated, are listed by Microsoft Graph.'));
   const rows = denied(entra) || entra?.ok === false ? entra : entraExchangeRoles(entra);
-  showRows(entraPanel, rows, ['Role', 'Description', 'Members'], r => [objCell(r.name, 'entraRole'), r.means, names(r.members).join(', ') || 'Nobody'], 'No Exchange-related directory roles have members.');
+  showRows(entraPanel, rows, ['Role', 'Description', 'Members'], r => [objCell(r.name, 'entraRole'), r.means, names(r.members).length ? objLinks(names(r.members), 'address') : 'Nobody'], 'No Exchange-related directory roles have members.');
   root.append(entraPanel);
   root.append(panel(h2('Purview and Defender role groups for email'), p('Role groups in Microsoft Purview and the Defender portal\'s Email & collaboration roles (for example Security Reader, Quarantine Administrator, eDiscovery Manager) live in Security & Compliance PowerShell. They are listed on Organization > Compliance > Compliance admin.'), el('a', { class: 'btn primary', href: '#compliance-admin', text: 'Open Compliance admin' })));
   root.append(portals('admin-roles'));
@@ -1826,7 +2075,7 @@ async function renderUserRoles() {
   const rows = psRows(data.userRoles);
   const box = panel(h2('User roles'), note('Each mailbox has one role assignment policy (RoleAssignmentPolicy on Get-Mailbox). It decides what people may change for themselves in Outlook and Outlook on the web. New mailboxes get the Default policy. Select a policy for its roles in plain words.'));
   if (Array.isArray(rows) && rows.length) {
-    box.append(table(['Name', 'Description', 'Roles'], rows.map(r => [xc('userRolePolicy', r.Name), r.Description || DASH, names(r.AssignedRoles).join(', ') || DASH]), {
+    box.append(table(['Name', 'Description', 'Roles'], rows.map(r => [xc('userRolePolicy', r.Name, { id: r.Guid }), r.Description || DASH, names(r.AssignedRoles).join(', ') || DASH]), {
       onRowClick: i => {
         const r = rows[i];
         openDetails(r.Name, p(r.Description || ''), p(r.IsDefault === true || r.IsDefault === 'True' ? 'This is the default policy for new mailboxes.' : 'Not the default. Mailboxes get it only when an admin sets it.', 'muted'),
@@ -1847,7 +2096,7 @@ async function renderRoleAssignments() {
   const all = psRows(data.roleAssignments);
   const split = splitAssignments(all);
   const cols = ['Role', 'Assigned to', 'Assigned through', 'Write scope', 'Enabled'];
-  const row = a => [xc('roleAssignment', a.Role), a.RoleAssignee || a.RoleAssigneeName, a.RoleAssigneeType, assignmentScope(a), checkMark(a.Enabled !== false && a.Enabled !== 'False')];
+  const row = a => [xc('roleAssignment', a.Role), objLink(a.RoleAssignee || a.RoleAssigneeName, assigneeKind(a.RoleAssigneeType)), a.RoleAssigneeType, assignmentScope(a), checkMark(a.Enabled !== false && a.Enabled !== 'False')];
   for (const [title, list, empty, why] of [
     ['Direct assignments to a person or group', split.direct, 'No roles are assigned directly to a person. Good: role groups are easier to audit.', 'Roles given to a user or security group without a role group. Microsoft recommends role groups instead, because these are easy to forget when someone changes jobs.'],
     ['Admin role groups', split.admin, 'No role group assignments were returned.', 'Roles each admin role group holds, and over which recipients.'],
@@ -1906,8 +2155,8 @@ async function renderChanges() {
       out.replaceChildren();
       const changes = asRows(data.changes);
       const directory = asRows(data.directoryAudit);
-      showRows(out, Array.isArray(changes) ? changes.filter(r => hit([r.caller, r.Caller, r.cmdlet, r.CmdletName, r.object, r.ObjectModified])) : changes, ['When', 'Who', 'Cmdlet', 'Object'], r => [r.when || r.RunDate, r.caller || r.Caller, r.cmdlet || r.CmdletName, r.object || r.ObjectModified], 'No Exchange admin audit rows match.');
-      showRows(out, Array.isArray(directory) ? directory.filter(r => hit([r.initiatedBy?.user?.userPrincipalName, r.activityDisplayName])) : directory, ['Date', 'Service', 'Category', 'Activity', 'Status', 'Status Reason'], r => [formatUtc(r.activityDateTime), r.loggedByService || DASH, r.category || DASH, r.activityDisplayName || DASH, r.result || DASH, r.resultReason || DASH], 'No Entra audit rows match.', r => [['Target(s)', (r.targetResources || []).map(t => t.userPrincipalName || t.displayName).filter(Boolean).join(', ')], ['Initiated by (actor)', r.initiatedBy?.user?.userPrincipalName || r.initiatedBy?.app?.displayName || '']]);
+      showRows(out, Array.isArray(changes) ? changes.filter(r => hit([r.caller, r.Caller, r.cmdlet, r.CmdletName, r.object, r.ObjectModified])) : changes, ['When', 'Who', 'Cmdlet', 'Object'], r => [r.when || r.RunDate, objLink(r.caller || r.Caller, 'address'), r.cmdlet || r.CmdletName, objLink(r.object || r.ObjectModified, 'address')], 'No Exchange admin audit rows match.', undefined, 'Exchange admin changes');
+      showRows(out, Array.isArray(directory) ? directory.filter(r => hit([r.initiatedBy?.user?.userPrincipalName, r.activityDisplayName])) : directory, ['Date', 'Service', 'Category', 'Activity', 'Status', 'Status Reason'], r => [formatUtc(r.activityDateTime), r.loggedByService || DASH, r.category || DASH, r.activityDisplayName || DASH, r.result || DASH, r.resultReason || DASH], 'No Entra audit rows match.', r => [['Target(s)', objLinks((r.targetResources || []).map(t => t.userPrincipalName || t.displayName).filter(Boolean), 'address')], ['Initiated by (actor)', r.initiatedBy?.user ? objLink(r.initiatedBy.user.userPrincipalName, 'user', { id: r.initiatedBy.user.id, upn: r.initiatedBy.user.userPrincipalName }) : r.initiatedBy?.app ? objLink(r.initiatedBy.app.displayName, 'servicePrincipal', { id: r.initiatedBy.app.servicePrincipalId, appId: r.initiatedBy.app.appId }) : '']], 'Microsoft Entra audit log');
     });
   });
   root.append(panel(h2('Search changes'), form), out, portals('changes'));
@@ -1919,10 +2168,10 @@ async function renderDlp() {
   const gap = licenseLine('dlp');
   if (gap) root.append(gap);
   root.append(panel(h2('Policies'), p('Mode: TestWithoutNotifications only logs. TestWithNotifications logs and shows the sender a policy tip. Enable acts (tip, block, or both). A policy without the Exchange workload does not apply to mail. A policy whose distribution is not Success has not reached the service yet, which looks like "the policy does nothing".'), grantLinks()));
-  showRows(root, asRows(data.dlp), ['Name', 'Priority', 'Mode', 'Policy sync status', 'Last modified'], r => [objCell(r.name, 'dlp'), r.priority ?? '', r.mode, r.distribution || '', whenCell(r.changed)], 'No DLP policies.', r => [['Workloads', (r.workloads || []).join(', ')], ['Scope', r.scope === 'all' ? 'All mailboxes' : [...(r.users || []), ...(r.groups || [])].join(', ') || 'Not limited']]);
+  showRows(lastPane(root), asRows(data.dlp), ['Name', 'Priority', 'Mode', 'Policy sync status', 'Last modified'], r => [objCell(r.name, 'dlp'), r.priority ?? '', r.mode, r.distribution || '', whenCell(r.changed)], 'No DLP policies.', r => [['Workloads', (r.workloads || []).join(', ')], ['Scope', r.scope === 'all' ? 'All mailboxes' : [...(r.users || []), ...(r.groups || [])].join(', ') || 'Not limited']]);
   root.append(panel(h2('Rules'), p('Each rule is a condition (usually sensitive information types) and actions. When a user says DLP blocked a message, find the rule here, then trace the message: the detail shows a DLP rule event with the policy name.')));
-  showRows(root, asRows(data.dlpRules), ['Rule', 'Policy', 'Looks for', 'Blocks', 'Notifies', 'Severity'], r => [objCell(r.name + (r.disabled ? ' (disabled)' : ''), 'dlp'), r.policy, (r.sensitiveTypes || []).join(', ') || (r.advanced ? 'Conditions built in the Purview editor. Open the rule to read them.' : '—'), r.blocks ? `Yes${r.blockScope ? ` (${r.blockScope})` : ''}` : 'No', (r.notifyUser || []).join(', ') || 'Nobody', r.severity || ''], 'No DLP rules.');
-  root.append(el('div', { class: 'callout' }, el('strong', { text: 'Troubleshooting a DLP match' }), steps([
+  showRows(lastPane(root), asRows(data.dlpRules), ['Rule', 'Policy', 'Looks for', 'Blocks', 'Notifies', 'Severity'], r => [objCell(r.name + (r.disabled ? ' (disabled)' : ''), 'dlp'), r.policy, (r.sensitiveTypes || []).join(', ') || (r.advanced ? 'Conditions built in the Purview editor. Open the rule to read them.' : '—'), r.blocks ? `Yes${r.blockScope ? ` (${r.blockScope})` : ''}` : 'No', (r.notifyUser || []).join(', ') || 'Nobody', r.severity || ''], 'No DLP rules.');
+  root.append(panel(h2('Troubleshooting a DLP match'), steps([
     'Trace the message on Trace a message and choose Explain. A DLP rule event names the policy and rule.',
     'Check the policy mode above. Test modes never block.',
     'Check distribution. Pending or Error means the policy is not live yet.',
@@ -1939,8 +2188,8 @@ async function renderLabels() {
   const gap = licenseLine('labels');
   if (gap) root.append(gap);
   root.append(grantLinks());
-  showRows(root, asRows(data.labels), ['Name', 'Priority', 'Scope', 'Created by', 'Last modified'], r => [objCell(r.name || r.displayName, 'label'), r.priority ?? '', r.contentType || '', r.createdBy || '', whenCell(r.changed)], 'No sensitivity labels.');
-  showRows(root, asRows(data.labelPolicies), ['Name', 'Priority', 'Policy sync status', 'Created by', 'Last modified'], r => [objCell(r.name, 'labelPolicy'), r.priority ?? '', r.distribution || '', r.createdBy || '', whenCell(r.changed)], 'No label policies.', r => [['Labels', (r.labels || []).join(', ')], ['Published to', r.publishedTo || '']]);
+  showRows(root, asRows(data.labels), ['Name', 'Priority', 'Scope', 'Created by', 'Last modified'], r => [objCell(r.name || r.displayName, 'label'), r.priority ?? '', r.contentType || '', r.createdBy || '', whenCell(r.changed)], 'No sensitivity labels.', undefined, 'Sensitivity labels');
+  showRows(root, asRows(data.labelPolicies), ['Name', 'Priority', 'Policy sync status', 'Created by', 'Last modified'], r => [objCell(r.name, 'labelPolicy'), r.priority ?? '', r.distribution || '', r.createdBy || '', whenCell(r.changed)], 'No label policies.', r => [['Labels', (r.labels || []).join(', ')], ['Published to', r.publishedTo || '']], 'Label policies');
   root.append(portals('labels'));
   pageEl.replaceChildren(root);
 }
@@ -1950,8 +2199,8 @@ async function renderRetention() {
   const gap = licenseLine('retention');
   if (gap) root.append(gap);
   root.append(grantLinks());
-  showRows(root, asRows(data.retentionPolicies), ['Name', 'Created by', 'Last modified'], r => [objCell(r.name, 'retention'), r.createdBy || '', whenCell(r.changed)], 'No retention policies.', r => [['Workloads', (r.workloads || []).join(', ')], ['Retention', r.duration || '']]);
-  showRows(root, asRows(data.retentionLabels), ['Name', 'Retention duration', 'Created by', 'Last modified'], r => [objCell(r.name || r.displayName, 'retentionLabel'), r.retention || r.retentionDuration || '', r.createdBy || '', whenCell(r.changed)], 'No retention labels.');
+  showRows(root, asRows(data.retentionPolicies), ['Name', 'Created by', 'Last modified'], r => [objCell(r.name, 'retention'), r.createdBy || '', whenCell(r.changed)], 'No retention policies.', r => [['Workloads', (r.workloads || []).join(', ')], ['Retention', r.duration || '']], 'Retention policies');
+  showRows(root, asRows(data.retentionLabels), ['Name', 'Retention duration', 'Created by', 'Last modified'], r => [objCell(r.name || r.displayName, 'retentionLabel'), r.retention || r.retentionDuration || '', r.createdBy || '', whenCell(r.changed)], 'No retention labels.', undefined, 'Retention labels');
   root.append(portals('retention-purview'));
   pageEl.replaceChildren(root);
 }
@@ -1961,7 +2210,7 @@ async function renderEdiscovery() {
   const gap = licenseLine('ediscovery');
   if (gap) root.append(gap);
   root.append(grantLinks());
-  showRows(root, asRows(data.cases), ['Case name', 'Status', 'Created', 'Last modified', 'Modified by', 'Number', 'Description'], r => [objCell(r.name || r.displayName, 'ediscovery'), r.status, whenCell(r.created), whenCell(r.changed), r.modifiedBy || '', r.number || '', r.description || ''], 'No eDiscovery cases.', r => [['Holds', (r.holds || []).map(h => h.name).join(', ') || 'None']]);
+  showRows(root, asRows(data.cases), ['Case name', 'Status', 'Created', 'Last modified', 'Modified by', 'Number', 'Description'], r => [objCell(r.name || r.displayName, 'ediscovery', { id: r.id, name: r.name || r.displayName }), r.status, whenCell(r.created), whenCell(r.changed), r.modifiedBy || '', r.number || '', r.description || ''], 'No eDiscovery cases.', r => [['Holds', (r.holds || []).map(h => h.name).join(', ') || 'None']], 'eDiscovery cases');
   root.append(portals('ediscovery'));
   pageEl.replaceChildren(root);
 }
@@ -1993,7 +2242,7 @@ async function renderAudit() {
     }).then(() => render());
   });
   root.append(panel(h2('Search'), form));
-  if (state.auditSearched) showRows(root, asRows(data.auditEvents), ['Date (UTC)', 'IP Address', 'User', 'Record type', 'Activity', 'Item'], r => { const d = auditData(r); return [formatUtc(r.when || r.CreationDate), d.ClientIP || d.ClientIPAddress || DASH, r.user || r.UserIds || DASH, r.RecordType || r.recordType || DASH, r.operation || r.Operations || DASH, d.ObjectId || DASH]; }, 'No audit events in this window.');
+  if (state.auditSearched) showRows(root, asRows(data.auditEvents), ['Date (UTC)', 'IP Address', 'User', 'Record type', 'Activity', 'Item'], r => { const d = auditData(r); return [formatUtc(r.when || r.CreationDate), d.ClientIP || d.ClientIPAddress || DASH, objLink(r.user || r.UserIds, 'address'), r.RecordType || r.recordType || DASH, r.operation || r.Operations || DASH, d.ObjectId || DASH]; }, 'No audit events in this window.', undefined, 'Audit search results');
   else root.append(note('Audit events are not listed until you search. Leave both boxes empty to list the latest.'));
   root.append(portals('audit'));
   pageEl.replaceChildren(root);
@@ -2002,7 +2251,7 @@ async function renderComplianceAdmin() {
   const data = await complianceData();
   const root = el('div', { class: 'stack' });
   root.append(panel(h2('Purview role groups'), p('These are the people who can open the compliance portal and run the read cmdlets behind these pages.'), grantLinks()));
-  showRows(root, asRows(data.purviewRoles), ['Name', 'Type', 'Roles', 'Users', 'Security groups'], r => [objCell(r.name, 'purviewRole'), '', (r.roles || []).length || '', (r.members || []).map(m => m.displayName || m).join(', '), ''], 'No Purview role groups in this snapshot.', r => [['Description', r.description || ''], ['Roles', (r.roles || []).join(', ')]]);
+  showRows(lastPane(root), asRows(data.purviewRoles), ['Name', 'Type', 'Roles', 'Users', 'Security groups'], r => [objCell(r.name, 'purviewRole'), '', (r.roles || []).length || '', objLinks(r.members || [], 'address'), ''], 'No Purview role groups in this snapshot.', r => [['Description', r.description || ''], ['Roles', (r.roles || []).join(', ')]]);
   root.append(portals('compliance-admin'));
   pageEl.replaceChildren(root);
 }
@@ -2014,9 +2263,9 @@ function renderMbCompliance() {
     const kept = asRows(data.retentionPolicies);
     const cases = asRows(data.cases);
     root.append(licenseLine('dlp') || note(''));
-    showRows(root, Array.isArray(policies) ? dlpForMailbox(policies, who) : policies, ['Policy', 'Mode', 'Why'], r => [objCell(r.name, 'dlp'), r.mode, r.why]);
-    showRows(root, Array.isArray(kept) ? retentionForMailbox(kept, who) : kept, ['Policy', 'Why'], r => [objCell(r.name, 'retention'), r.why]);
-    showRows(root, Array.isArray(cases) ? holdsForMailbox(cases, who) : cases, ['Hold', 'Why'], r => [objCell(r.hold || r.name, 'ediscovery'), r.why]);
+    showRows(root, Array.isArray(policies) ? dlpForMailbox(policies, who) : policies, ['Policy', 'Mode', 'Why'], r => [objCell(r.name, 'dlp'), r.mode, r.why], undefined, undefined, 'DLP policies that apply');
+    showRows(root, Array.isArray(kept) ? retentionForMailbox(kept, who) : kept, ['Policy', 'Why'], r => [objCell(r.name, 'retention'), r.why], undefined, undefined, 'Retention policies that apply');
+    showRows(root, Array.isArray(cases) ? holdsForMailbox(cases, who) : cases, ['Hold', 'Why'], r => [objCell(r.hold || r.name, 'ediscovery'), r.why], undefined, undefined, 'eDiscovery holds on this recipient');
     root.append(portals('dlp'), portals('ediscovery'));
   });
 }
@@ -2026,7 +2275,7 @@ function renderMbCa() {
     const who = mailboxWho();
     root.append(panel(h2('Exchange and Office 365'), p('A policy applies here when it is enabled and its cloud apps include Exchange Online, Office 365, or all apps, and this user is in scope. Policy.Read.All is already on the first sign-in.')));
     const policies = asRows(data.ca);
-    showRows(root, Array.isArray(policies) ? caForMailbox(policies, who) : policies, ['Policy name', 'Grant', 'Why'], r => [objCell(r.name, 'caPolicy', { id: r.id }), r.grant, r.why]);
+    showRows(lastPane(root), Array.isArray(policies) ? caForMailbox(policies, who) : policies, ['Policy name', 'Grant', 'Why'], r => [objCell(r.name, 'caPolicy', { id: r.id }), r.grant, r.why]);
     root.append(portals('conditional-access'));
   });
 }
@@ -2036,8 +2285,8 @@ function renderMbXdr() {
     const rawAlerts = asRows(data.alerts);
     const alerts = Array.isArray(rawAlerts) ? alertsForMailbox(rawAlerts, mailboxWho()) : rawAlerts;
     if (denied(data.incidents)) root.append(callout(denied(data.incidents)));
-    showRows(root, asRows(data.incidents), ['Incident name', 'Status', 'Severity'], r => [objCell(r.displayName || r.title || r.name, 'incident', { id: r.id }), r.status, r.severity]);
-    showRows(root, alerts, ['Alert name', 'Severity'], r => [objCell(r.title || r.name, 'alert', { id: r.id }), r.severity], 'No alerts for this recipient.');
+    showRows(root, asRows(data.incidents), ['Incident name', 'Status', 'Severity'], r => [objCell(r.displayName || r.title || r.name, 'incident', { id: r.id }), r.status, r.severity], undefined, undefined, 'Incidents');
+    showRows(root, alerts, ['Alert name', 'Severity'], r => [objCell(r.title || r.name, 'alert', { id: r.id }), r.severity], 'No alerts for this recipient.', undefined, 'Alerts');
     root.append(portals('xdr'), portals('support'));
   });
 }
@@ -2045,7 +2294,7 @@ function renderMbXdr() {
 const LEGACY_VIEWS = { mailbox: 'mb-recipient', 'mb-report': 'mb-recipient', recipients: 'rcp-shared' };
 // Pages that work without a sign-in: setup, the new hire pages, the header analyzer, the Outlook collector and NextHop.
 // NextHop works from the sample topology or an export file opened in the browser, so it needs no sign-in either.
-const SIGNED_OUT_VIEWS = new Set(['setup', 'start', 'needs', 'asked', 'glossary', 'learn', 'playbooks', 'hops', 'outlook', 'nexthop']);
+const SIGNED_OUT_VIEWS = new Set(['setup', 'start', 'needs', 'asked', 'glossary', 'learn', 'playbooks', 'hops', 'outlook', 'nexthop', 'snapshots']);
 function signInFirst(view) {
   return panel(h2('Sign in to see your tenant'),
     p('This page reads your Microsoft 365 tenant as you, with your own permissions. Nothing shows until you sign in.'),
@@ -2067,7 +2316,7 @@ async function render() {
   pageEl.replaceChildren(loadingPanel(id));
   try {
     if (needsOrg && !state.org) state.org = await shared(`/api/org${demoQuery()}`);
-    if (id.startsWith('mb-')) await ensureBox();
+    if (id.startsWith('mb-') || (id === 'nexthop' && (state.demo || state.session.signedIn))) await ensureBox();
     if (seq !== renderSeq) return;
     await views[id]();
   } catch (error) {

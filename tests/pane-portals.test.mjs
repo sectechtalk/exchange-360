@@ -33,7 +33,7 @@ test('pane headings pick the specific portal page', () => {
 
 test('panel() puts the portal button under every pane heading, not only at the bottom', () => {
   const app = read('public/app.js');
-  assert.match(app, /const panel = \(\.\.\.kids\) => addPanePortal\(/);
+  assert.match(app, /const panel = \(\.\.\.kids\) => foldPane\(addPanePortal\(/);
   assert.match(app, /text: `Open in portal: \$\{main\.name\}`/);
   assert.match(app, /function reportSection\(s\) \{\n  const main = \(s\.portals/);
 });

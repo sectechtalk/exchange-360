@@ -34,6 +34,41 @@ The open configuration, the test message and the live read's finish time are sav
 
 Direction (inbound or outbound), the outside address, the subject, body and attachments (name and size), and the message type (normal, automatic forward, automatic reply). Inbound adds the From display name and three **mocked** values, because the outside side is fake and NextHop does no DNS: the sending IP (trips connection filter, inbound connector IP scoping, advanced delivery and IP conditions), the sender's authentication result (pass, DMARC fail with p=reject/quarantine/none, or composite fail), the spam filter's verdict and bulk complaint level, and whether an attachment is malware. Outbound adds the sensitivity label the sender applies.
 
+## Fill it from a real message
+
+Under **Test message**, open **Fill it from a real message**. Paste the message's header block (Outlook: File > Properties > Internet headers, or Message trace), paste a whole message, or choose a .eml or .msg file. **Fill the form and predict** reads what NextHop needs, fills the form and runs the prediction. A table shows each value and the header it came from:
+
+| Field | Read from |
+| --- | --- |
+| Direction | `X-Forefront-Antispam-Report` DIR, then `X-MS-Exchange-Organization-MessageDirectionality`, then whether From is an accepted domain |
+| Outside address, From display name | From (inbound); the first outside To or Cc (outbound) |
+| Sending IP | `X-Forefront-Antispam-Report` CIP, else the oldest outside Received hop |
+| Sender authentication | `Authentication-Results`: dmarc=fail with its action (reject, quarantine, none), else compauth=fail or CAT:SPOOF |
+| Spam verdict, bulk level, malware | `X-Forefront-Antispam-Report` CAT and SFV, `X-Microsoft-Antispam` BCL, CAT:MALW |
+| Message type | `Auto-Submitted`, Exchange inbox rule headers |
+| Subject, body, attachments | Subject (encoded words decoded); a whole .eml also gives the text body and each attachment's name and size |
+
+It says what it could not use: a header block has no body; spam filtering skipped on arrival (SFV:SKN and similar) hides the real verdict; IPv6 is not matched against IPv4 ranges; a message to or from a different mailbox than the one in the configuration uses that configuration's mailbox for mailbox-level settings. The mail flow rules the headers say ran (`X-MS-Exchange-Organization-Rules-Execution-History`) are listed so they can be compared with the prediction, which always uses today's configuration.
+
+## Message path (hidden for now)
+
+Mail flow lanes replaced it on the page; the code stays (`SHOW_MESSAGE_PATH` in public/message-path-view.js). The **Message path** pane draws the configuration as the steps Exchange Online applies, in the order NextHop checks them, with every object under its step: accepted domains, inbound connectors and the connection filter, anti-malware, mail flow rules (by priority) and DLP, anti-phishing and anti-spam, Safe Attachments, Safe Links and journaling, then the mailbox, its inbox rules and holds (inbound); the mailbox and its groups, anti-malware and outbound spam, rules, DLP, journaling and auto-labeling, remote domains, outbound connectors and DKIM (outbound). A mail flow rule sits on the inbound or outbound path from its sender and recipient scope; a rule with no scope sits on both. Disabled objects show **Off** and test-mode ones **Test**.
+
+After a prediction the path lights up: each step says **Passed**, **Stopped here**, **Delivered** or **Not reached**, and every object that acted on the message is coloured by what it did, with its line number in "What happens, step by step". Selecting any object opens its settings, what it did to this message, and the portals where it is changed. **Copy path as text** copies one line per step.
+
+## Mail flow lanes
+
+**Mail flow lanes** (opens first, after a prediction) shows one numbered column for each place a configuration object acts, left to right in the order Exchange Online applies them, for **Inbound** or **Outbound**.
+
+- Inbound: outside sender; accepted domains; connectors, connection filter and advanced delivery; anti-malware; mail flow rules (priority order); data loss prevention; anti-phishing, anti-spam and quarantine policies; Safe Attachments and Safe Links; journaling; recipient mailbox, inbox rules and retention. Threat policies act twice: malware before the rules, phishing and spam after them.
+- Outbound: sender mailbox and groups; outbound spam; anti-malware; mail flow rules; DLP and auto-labeling; journaling; remote domains; DKIM signing; outbound connectors; outside recipient.
+
+A message is tracked exactly as on the Message path (the same objects lit in the same tones with the same step numbers, the same flyout), and a line joins the objects that acted in step order. The columns follow the engine's order, so the line only moves right; the recipient mailbox is also looked up at the front door, and the line meets it where the message is delivered. **Copy route as text** copies one line per object.
+
+## Page layout
+
+Every pane folds under its heading with **Collapse** / **Expand** and starts collapsed on each visit. Portal buttons put the home portal first, filled solid and labelled "Home:": the portal of the service that stores the object (`HOME_PORTAL` in lib/object-links.js). The other portals show some of its settings. Right under the buttons is the PowerShell that returns every setting (`getCommand()`), in object flyouts, under each prediction step and in Topology at a glance; table cells across Exchange 360 get the same home-first order. In the prediction, each step of "What happens, step by step" has its own **Settings that caused it** under it (the step that stopped or changed the message opens by itself). **Topology at a glance** is drawn like the Message path: every row of the table is a box (select it for its names, portals and the export's PowerShell read), under ten numbered stops for the stages a message travels through (arrives, connection, anti-malware, mail flow rules and DLP, anti-phishing and anti-spam, Safe Attachments and Safe Links, journaling and labels, the mailbox, leaving the organization, organization-wide). Each box says how many items it holds and whether the prediction uses it yet ("Not predicted yet"); the same areas are also available as a table. It also and lists what is not in the export at all (DNS, other recipients, groups as recipients, hybrid, Microsoft's own service).
+
 ## What it checks, in order
 
 **Inbound:** accepted domain; inbound connectors (sender domains, sender IPs, "only accept from these IPs"); mailbox delivery restrictions and size limits; mailbox quota; advanced delivery (phishing simulation, SecOps mailbox); connection filter IP Allow and Block Lists; Tenant Allow/Block List for IPs and senders; anti-malware (common attachments filter, quarantine policy); mail flow rules in priority order (conditions, exceptions, test mode, stop processing, activation and expiry dates, and actions including reject, delete, quarantine, moderation, redirect, SCL, subject, disclaimer, headers, encryption, Bcc and incident reports); DLP (Exchange location, test mode, sensitive information types, override); content filtering in Microsoft's precedence (phishing and high confidence spam, then spoof/DMARC and user/domain impersonation, then spam and bulk) with the policy that wins for the mailbox (Strict preset, Standard preset, custom rules by priority, default) and its quarantine policy; Safe Attachments; Safe Links and blocked URLs; journal rules; the Outlook external tag; retention and holds; the mailbox's own Safe and Blocked Senders, inbox rules and forwarding, where every forward to outside is checked against the outbound spam policy and the remote domain; automatic replies.
@@ -61,4 +96,8 @@ Under every step, **Configured in** links to each admin portal page that changes
 | `lib/nexthop-scenarios.js` | The 14 examples on the page. |
 | `lib/nexthop-report.js` | The .mhtml report. |
 | `public/nexthop-page.js` | The page. Every button shows busy feedback or flashes what it did. |
+| `lib/message-path.js` | The Message path model and the overlay of one prediction. Pure. |
+| `public/message-path-view.js` | The Message path pane and its object flyout. |
+| `lib/message-input.js` | Reads a header block or .eml into a test message, with the source of every value. Pure. |
+| `tests/message-path.test.mjs` | Message path and fill-from-message checks. |
 | `tests/nexthop.test.mjs` | Engine, sample, examples, report and page checks. |

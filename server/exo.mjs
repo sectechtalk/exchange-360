@@ -10,7 +10,7 @@ import { logPowershellFailure } from './log.mjs';
 
 const script = path.join(path.dirname(fileURLToPath(import.meta.url)), 'Invoke-Ex360Command.ps1');
 
-export const EXO_MODES = ['ping', 'org', 'mailbox', 'report', 'trace', 'migrations', 'exoroles', 'adminaudit', 'ipps', 'govern', 'recipients', 'quarantine', 'search', 'rights'];
+export const EXO_MODES = ['ping', 'org', 'mailbox', 'report', 'trace', 'migrations', 'exoroles', 'adminaudit', 'ipps', 'govern', 'recipients', 'quarantine', 'search', 'rights', 'recipientextra'];
 // Modes that connect to Security & Compliance PowerShell with the compliance token.
 const IPPS_MODES = new Set(['ipps', 'govern']);
 

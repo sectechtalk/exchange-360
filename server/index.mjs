@@ -33,9 +33,12 @@ import { demoTrace, normalizeTraceArgs, traceCommand, hasTraceFilter, signedOutT
 import { demoQuarantine } from '../lib/quarantine.js';
 import { runExo } from './exo.mjs';
 import { startLive, liveStatus, forgetLive } from './nexthop-live.mjs';
+import { listSnapshots, readSnapshot, startSnapshot, snapshotStatus, forgetSnapshot, saveSnapshot, snapshotStoreSettings, snapshotStoreClient, snapshotStoreSaver } from './snapshots.mjs';
+import { diffSnapshots } from '../lib/snapshot-diff.js';
 import { ALL_CHANGE_CHECKS } from '../lib/change-rights.js';
 import { reportMhtml, reportMhtmlFileName } from '../lib/report-mhtml.js';
-import { graphGet } from './graph.mjs';
+import { graphGet, graphList } from './graph.mjs';
+import { EXTRA_KINDS, demoExtra, deviceRows, folderRows, auditRows, directoryRows, licenseRows, AUDIT_DAYS } from '../lib/recipient-extra.js';
 import { handleRpc, NotSignedIn } from '../lib/mcp.js';
 import {
   loadLicenses, loadDomains, searchRecipients, loadExchangeOrg, shapeExchange,
@@ -217,6 +220,26 @@ async function connectRest(session) {
   });
   return result.missing;
 }
+// Config snapshots stored in a snapshot store: the person's own access token for the store's API (SNAPSHOT_STORE_API_SCOPE), redeemed without a
+// prompt from the Graph sign-in's refresh token, like Exchange and compliance. Kept in the session until it expires.
+const STORE = snapshotStoreSettings();
+async function snapshotStoreToken(session) {
+  const t = stamp(session?.snapshotStore);
+  if (t?.access_token && t.expires_at - Date.now() > RENEW_BEFORE_MS) return t.access_token;
+  if (!session?.graph?.refresh_token) throw new Error('Sign in to Exchange 360 first.');
+  try {
+    session.snapshotStore = stamp(await tokenPost(refreshRequestBody({ clientId: CLIENT, refreshToken: session.graph.refresh_token, scope: STORE.scope }), 'snapshotStore'));
+  } catch (error) {
+    throw new Error(/65001|consent/i.test(error.message)
+      ? `Admin consent for the snapshot store (${STORE.scope}) is missing on the Exchange 360 app registration. Grant it in the Microsoft Entra admin center.`
+      : `Exchange 360 could not get a token for the snapshot store: ${clip(error.message, 300)}`);
+  }
+  return session.snapshotStore.access_token;
+}
+function snapshotStoreFor(session) {
+  return STORE.configured && session?.graph ? snapshotStoreClient({ settings: STORE, token: () => snapshotStoreToken(session) }) : null;
+}
+
 function exoFailure(error) {
   return /consent|65001|70011/i.test(error.message) && !lookupSignInError(error.message)
     ? { ...notAuthorized('exchange', 'Admin consent for Exchange.Manage is missing. Setup steps shows how to grant it.'), detail: clip(error.message) }
@@ -307,7 +330,8 @@ const server = createServer(async (req, res) => {
       if (!Array.isArray(msg) && msg.method === 'tools/call') logLine('mcp.call', { tool: String(msg.params?.name || '').slice(0, 60), error: Boolean(out.result?.isError) });
       return json(res, 200, out);
     }
-    if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Ex360 v1 does not change the tenant. This method is not used.');
+    const snapshotPost = req.method === 'POST' && url.pathname === '/api/snapshots/start';
+    if (req.method !== 'GET' && req.method !== 'HEAD' && !snapshotPost) return send(res, 405, 'Ex360 v1 does not change the tenant. This method is not used.');
 
     if (url.pathname === '/healthz') return json(res, 200, { ok: true, name: 'exchange-360' });
 
@@ -405,6 +429,7 @@ const server = createServer(async (req, res) => {
       const sid = cookies(req).ex360sid;
       sessions.delete(sid);
       forgetLive(sid);
+      forgetSnapshot(sid);
       res.setHeader('set-cookie', 'ex360sid=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');
       return send(res, 302, '', { location: '/#start' });
     }
@@ -480,6 +505,35 @@ const server = createServer(async (req, res) => {
         return json(res, 200, startLive(session.sid, { exoToken: session.exo?.access_token, ippsToken: session.compliance?.access_token, upn: await ensureUpn(session), mailbox, total: EXPORT_SECTIONS }));
       }
       return json(res, 200, { ...liveStatus(session.sid, { withConfig: url.searchParams.get('config') === '1' }), signedIn: true, exchange: Boolean(session.exo?.access_token), compliance: Boolean(session.compliance?.access_token), upn: session.account?.username || '' });
+    }
+
+    // Config snapshots (Organization > Auditing/Logging > Config snapshots): one click reads the mail flow configuration
+    // (read-only) and stores it in the snapshot store when SNAPSHOT_STORE_URL and SNAPSHOT_STORE_API_SCOPE are set, otherwise in the snapshots folder on the PC.
+    // Starting one is a POST with a JSON body (the session cookie is SameSite=Lax, so other sites cannot start one).
+    if (snapshotPost) {
+      if (!String(req.headers['content-type'] || '').startsWith('application/json')) return json(res, 415, { state: 'error', message: 'Send JSON.' });
+      if (!session?.sid) return json(res, 200, { state: 'error', message: 'Sign in first: a snapshot reads the tenant with your own sign-in.' });
+      let body = {};
+      try { body = JSON.parse((await readBody(req, 10000)).toString('utf8') || '{}'); } catch { return json(res, 400, { state: 'error', message: 'The request was not valid JSON.' }); }
+      const snapshotStore = snapshotStoreFor(session);
+      if (STORE.configured && !snapshotStore) return json(res, 200, { state: 'error', message: 'Sign in first: the snapshot store saves the snapshot with your own sign-in.' });
+      return json(res, 200, startSnapshot(session.sid, { exoToken: session.exo?.access_token, ippsToken: session.compliance?.access_token, upn: await ensureUpn(session), label: String(body.label || ''), total: EXPORT_SECTIONS, save: snapshotStore ? snapshotStoreSaver(snapshotStore) : saveSnapshot }));
+    }
+    if (url.pathname === '/api/snapshots') {
+      const snapshotStore = snapshotStoreFor(session);
+      return json(res, 200, { ...(await listSnapshots({ snapshotStore })), snapshotStore: { configured: STORE.configured, url: STORE.url, problem: STORE.problem, needsSignIn: STORE.configured && !snapshotStore }, job: session?.sid ? snapshotStatus(session.sid) : { state: 'none' }, signedIn: Boolean(session?.sid), exchange: Boolean(session?.exo?.access_token), compliance: Boolean(session?.compliance?.access_token) });
+    }
+    if (url.pathname === '/api/snapshots/file') {
+      const got = await readSnapshot(url.searchParams.get('id'), { snapshotStore: snapshotStoreFor(session) });
+      if (!got.ok) return json(res, 404, got);
+      return send(res, 200, JSON.stringify(got.cfg, null, 2), { 'content-type': 'application/json; charset=utf-8', 'content-disposition': `attachment; filename="${got.name}"` });
+    }
+    if (url.pathname === '/api/snapshots/diff') {
+      const a = await readSnapshot(url.searchParams.get('a'), { snapshotStore: snapshotStoreFor(session) });
+      if (!a.ok) return json(res, 200, a);
+      const b = await readSnapshot(url.searchParams.get('b'), { snapshotStore: snapshotStoreFor(session) });
+      if (!b.ok) return json(res, 200, b);
+      return json(res, 200, { ...diffSnapshots(a.cfg, b.cfg), beforeName: a.name, afterName: b.name });
     }
 
     if (url.pathname === '/api/compliance') {
@@ -633,6 +687,44 @@ const server = createServer(async (req, res) => {
       if (!session.exo?.access_token) return json(res, 200, notAuthorized('exchange'));
       const result = await runExo({ token: session.exo.access_token, organization: ORG, mode: 'quarantine', ...exoIdentity(session, await ensureUpn(session)), args: qArgs });
       return json(res, 200, { source: 'live', ...result });
+    }
+
+    if (url.pathname === '/api/recipient-extra') {
+      // Single recipient: Mobile devices, Calendar and folder permissions, Admin changes, Licenses and service plans.
+      const what = url.searchParams.get('what') || '';
+      const address = (url.searchParams.get('address') || '').slice(0, 320);
+      const userId = (url.searchParams.get('id') || '').slice(0, 200);
+      if (!EXTRA_KINDS.includes(what) || !address) return json(res, 400, { ok: false, message: 'Pick a recipient first.' });
+      if (wantsDemo(url, session)) return json(res, 200, demoExtra(what, address));
+      const exo = async () => {
+        if (!session.exo?.access_token) return { ok: false, ...notAuthorized('exchange') };
+        const raw = await runExo({ token: session.exo.access_token, organization: ORG, mode: 'recipientextra', args: { identity: address, what }, ...exoIdentity(session, await ensureUpn(session)), timeoutMs: 180000 });
+        if (!raw?.ok) return { ok: false, authorized: true, label: 'Could not read', message: raw?.message || 'Exchange Online PowerShell did not answer.' };
+        const cmd = (raw.commands || [])[0];
+        if (!cmd?.ok) return { ok: false, authorized: !/not authorized|access denied|isn't recognized|is not recognized/i.test(cmd?.error || ''), label: /not authorized|access denied/i.test(cmd?.error || '') ? 'Not authorized' : 'Could not read', message: cmd?.error || 'The read failed.' };
+        return { ok: true, value: cmd.value || [] };
+      };
+      const graphUser = encodeURIComponent(/^[0-9a-f-]{36}$/i.test(userId) ? userId : address);
+      if (what === 'devices') { const r = await exo(); return json(res, 200, r.ok ? { ok: true, source: 'live', value: deviceRows(r.value) } : r); }
+      if (what === 'folders') { const r = await exo(); return json(res, 200, r.ok ? { ok: true, source: 'live', value: folderRows(r.value) } : r); }
+      if (what === 'audit') {
+        const [ex, dir] = await Promise.all([
+          exo(),
+          /^[0-9a-f-]{36}$/i.test(userId) ? graphList(session.graph.access_token, `/auditLogs/directoryAudits?$filter=${encodeURIComponent(`targetResources/any(t:t/id eq '${userId}')`)}&$top=50`, 'directoryAudit', 2) : Promise.resolve({ ok: true, value: [] }),
+        ]);
+        return json(res, 200, { ok: true, source: 'live', days: AUDIT_DAYS, exchange: ex.ok ? { ok: true, value: auditRows(ex.value) } : ex, directory: dir.ok ? { ok: true, value: directoryRows(dir.value) } : dir });
+      }
+      // licenses
+      const [details, user] = await Promise.all([
+        graphList(session.graph.access_token, `/users/${graphUser}/licenseDetails`, 'users', 2),
+        graphGet(session.graph.access_token, `/users/${graphUser}?$select=id,licenseAssignmentStates`, 'users'),
+      ]);
+      if (!details.ok) return json(res, 200, details);
+      const states = user.ok ? user.json.licenseAssignmentStates || [] : [];
+      const groupIds = [...new Set(states.map(s => s.assignedByGroup).filter(Boolean))].slice(0, 20);
+      const names = {};
+      await Promise.all(groupIds.map(async gid => { const g = await graphGet(session.graph.access_token, `/groups/${encodeURIComponent(gid)}?$select=displayName`, 'groups'); if (g.ok) names[gid] = g.json.displayName; }));
+      return json(res, 200, { ok: true, source: 'live', value: licenseRows(details.value, states, names) });
     }
 
     if (url.pathname === '/api/recipients') {

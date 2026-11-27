@@ -49,7 +49,7 @@ test('every button that starts work in Ex360 uses busy(), and instant ones flash
   const built = (app.match(/el\('button'/g) || []).length;
   for (const label of ['Reading sign-ins…', 'Searching changes…']) assert.ok(app.includes(`'${label}'`), label);
   assert.match(app, /busy\(button, 'Searching…', async \(\) => \{\n      out\.replaceChildren\(el\('p', \{ class: 'loading', text: 'Reading recipients…'/);
-  assert.equal(built, 22, 'a new button was added: give it busy(), flash() or an immediate redraw, then update this count');
+  assert.equal(built, 24, 'a new button was added: give it busy(), flash() or an immediate redraw, then update this count');
   const css = read('public/styles.css');
   assert.match(css, /\.btn\.is-busy::before/);
   assert.match(css, /prefers-reduced-motion/);

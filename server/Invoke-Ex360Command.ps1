@@ -48,7 +48,7 @@ function Invoke-Read($name, $script) {
 }
 
 # Fallback for Write-Result: every property flattened to plain strings. Byte arrays and long text are shortened.
-$flatSkip = 'PSComputerName', 'PSShowComputerName', 'RunspaceId', 'ObjectState', 'IsValid', 'OrganizationId', 'OriginatingServer', 'ExchangeVersion', 'DistinguishedName', 'ObjectCategory', 'ObjectClass', 'Id', 'Guid', 'ExchangeObjectId', 'WhenChangedUTC', 'WhenCreatedUTC', 'OrganizationalUnitRoot', 'PSStandardMembers'
+$flatSkip = 'PSComputerName', 'PSShowComputerName', 'RunspaceId', 'ObjectState', 'IsValid', 'OrganizationId', 'OriginatingServer', 'ExchangeVersion', 'DistinguishedName', 'ObjectCategory', 'ObjectClass', 'Id', 'ExchangeObjectId', 'WhenChangedUTC', 'WhenCreatedUTC', 'OrganizationalUnitRoot', 'PSStandardMembers'
 function ConvertTo-Ex360Flat($obj) {
     $h = [ordered]@{}
     foreach ($p in @($obj.PSObject.Properties)) {
@@ -116,7 +116,7 @@ try {
             (Invoke-Read 'arc' { Get-ArcConfig | Select-Object @{n = 'ArcTrustedSealers'; e = { & $str $_.ArcTrustedSealers } } }),
             (Invoke-Read 'inbound' { Get-InboundConnector | Select-Object Name, Enabled, ConnectorType, ConnectorSource, @{n = 'SenderDomains'; e = { & $str $_.SenderDomains } }, @{n = 'SenderIPAddresses'; e = { & $str $_.SenderIPAddresses } }, RequireTls, RestrictDomainsToCertificate, RestrictDomainsToIPAddresses, TlsSenderCertificateName, EFSkipLastIP, @{n = 'EFSkipIPs'; e = { & $str $_.EFSkipIPs } }, Comment }),
             (Invoke-Read 'outbound' { Get-OutboundConnector | Select-Object Name, Enabled, ConnectorType, ConnectorSource, @{n = 'RecipientDomains'; e = { & $str $_.RecipientDomains } }, @{n = 'SmartHosts'; e = { & $str $_.SmartHosts } }, TlsSettings, TlsDomain, UseMXRecord, IsTransportRuleScoped, RouteAllMessagesViaOnPremises, AllAcceptedDomains, Comment }),
-            (Invoke-Read 'rules' { Get-TransportRule | Select-Object Name, Priority, State, Mode, Description, Comments, StopRuleProcessing, SentTo, SentToMemberOf, SentToScope, RecipientDomainIs, From, FromMemberOf, FromScope, SenderDomainIs, ExceptIfSentTo, ExceptIfSentToMemberOf, ExceptIfRecipientDomainIs, ExceptIfFrom, ExceptIfFromMemberOf, ExceptIfSenderDomainIs, @{n = 'SenderIpRanges'; e = { & $str $_.SenderIpRanges } }, SetSCL, SetHeaderName, SetHeaderValue, PrependSubject, RejectMessageReasonText, RejectMessageEnhancedStatusCode, DeleteMessage, Quarantine, RedirectMessageTo, BlindCopyTo, AddToRecipients, CopyTo, ModerateMessageByUser, ModerateMessageByManager, RouteMessageOutboundConnector, ApplyOME, ApplyRightsProtectionTemplate, GenerateIncidentReport, SetAuditSeverity, ActivationDate, ExpiryDate, WhenChanged, RuleErrorAction, SenderAddressLocation, @{n = 'Size'; e = { & $pick $_ 'Size', 'RuleSize' } }, @{n = 'LastExecution'; e = { & $pick $_ 'LastExecutionTime', 'LastExecutedTime', 'LastExecuted', 'LastExecution' } }, @{n = 'ConfigurationSupported'; e = { & $pick $_ 'IsRuleConfigurationSupported', 'IsConfigurationSupported', 'ConfigurationSupported' } }, @{n = 'UnsupportedReason'; e = { & $pick $_ 'RuleConfigurationUnsupportedReason', 'UnsupportedReason', 'ConfigurationUnsupportedReason' } } }),
+            (Invoke-Read 'rules' { Get-TransportRule | Select-Object Name, @{n = 'Guid'; e = { [string]$_.Guid } }, Priority, State, Mode, Description, Comments, StopRuleProcessing, SentTo, SentToMemberOf, SentToScope, RecipientDomainIs, From, FromMemberOf, FromScope, SenderDomainIs, ExceptIfSentTo, ExceptIfSentToMemberOf, ExceptIfRecipientDomainIs, ExceptIfFrom, ExceptIfFromMemberOf, ExceptIfSenderDomainIs, @{n = 'SenderIpRanges'; e = { & $str $_.SenderIpRanges } }, SetSCL, SetHeaderName, SetHeaderValue, PrependSubject, RejectMessageReasonText, RejectMessageEnhancedStatusCode, DeleteMessage, Quarantine, RedirectMessageTo, BlindCopyTo, AddToRecipients, CopyTo, ModerateMessageByUser, ModerateMessageByManager, RouteMessageOutboundConnector, ApplyOME, ApplyRightsProtectionTemplate, GenerateIncidentReport, SetAuditSeverity, ActivationDate, ExpiryDate, WhenChanged, RuleErrorAction, SenderAddressLocation, @{n = 'Size'; e = { & $pick $_ 'Size', 'RuleSize' } }, @{n = 'LastExecution'; e = { & $pick $_ 'LastExecutionTime', 'LastExecutedTime', 'LastExecuted', 'LastExecution' } }, @{n = 'ConfigurationSupported'; e = { & $pick $_ 'IsRuleConfigurationSupported', 'IsConfigurationSupported', 'ConfigurationSupported' } }, @{n = 'UnsupportedReason'; e = { & $pick $_ 'RuleConfigurationUnsupportedReason', 'UnsupportedReason', 'ConfigurationUnsupportedReason' } } }),
             (Invoke-Read 'presetEop' { Get-EOPProtectionPolicyRule | Select-Object ($recipientScope + 'HostedContentFilterPolicy', 'MalwareFilterPolicy', 'AntiPhishPolicy') }),
             (Invoke-Read 'presetAtp' { Get-ATPProtectionPolicyRule | Select-Object ($recipientScope + 'SafeLinksPolicy', 'SafeAttachmentPolicy', 'AntiPhishPolicy') }),
             (Invoke-Read 'builtIn' { Get-ATPBuiltInProtectionRule | Select-Object ($recipientScope + 'SafeLinksPolicy', 'SafeAttachmentPolicy') }),
@@ -189,7 +189,7 @@ try {
                 }
                 $rows
             }),
-            (Invoke-Read 'dynamic' { Get-DynamicDistributionGroup -ResultSize 500 | Select-Object DisplayName, PrimarySmtpAddress, IsDirSynced, @{n = 'WhenCreated'; e = { if ($_.WhenCreatedUTC) { $_.WhenCreatedUTC.ToString('o') } else { [string]$_.WhenCreated } } }, RecipientFilter, RequireSenderAuthenticationEnabled, @{n = 'ManagedBy'; e = { & $str $_.ManagedBy } } }),
+            (Invoke-Read 'dynamic' { Get-DynamicDistributionGroup -ResultSize 500 | Select-Object DisplayName, PrimarySmtpAddress, @{n = 'Guid'; e = { [string]$_.Guid } }, IsDirSynced, @{n = 'WhenCreated'; e = { if ($_.WhenCreatedUTC) { $_.WhenCreatedUTC.ToString('o') } else { [string]$_.WhenCreated } } }, RecipientFilter, RequireSenderAuthenticationEnabled, @{n = 'ManagedBy'; e = { & $str $_.ManagedBy } } }),
             (Invoke-Read 'm365' { Get-UnifiedGroup -ResultSize 1000 | Select-Object DisplayName, PrimarySmtpAddress, ExternalDirectoryObjectId, AccessType, IsDirSynced, IsMembershipDynamic, @{n = 'ResourceProvisioningOptions'; e = { & $str $_.ResourceProvisioningOptions } }, @{n = 'WhenCreated'; e = { if ($_.WhenCreatedUTC) { $_.WhenCreatedUTC.ToString('o') } else { [string]$_.WhenCreated } } }, @{n = 'ManagedBy'; e = { & $str $_.ManagedBy } }, GroupMemberCount, GroupExternalMemberCount, RequireSenderAuthenticationEnabled, HiddenFromExchangeClientsEnabled, HiddenFromAddressListsEnabled, AutoSubscribeNewMembers })
         )
     } elseif ($Mode -eq 'search') {
@@ -199,7 +199,7 @@ try {
         if (-not $q) { throw 'A name or address is required.' }
         $types = 'UserMailbox', 'SharedMailbox', 'RoomMailbox', 'EquipmentMailbox', 'LinkedMailbox', 'GroupMailbox', 'MailUniversalDistributionGroup', 'MailUniversalSecurityGroup', 'MailNonUniversalGroup', 'RoomList', 'DynamicDistributionGroup', 'MailContact', 'MailUser', 'GuestMailUser', 'PublicFolder'
         $out.commands = @(
-            (Invoke-Read 'recipients' { Get-Recipient -Anr $q -RecipientTypeDetails $types -ResultSize 25 | Select-Object DisplayName, @{n = 'PrimarySmtpAddress'; e = { [string]$_.PrimarySmtpAddress } }, @{n = 'RecipientTypeDetails'; e = { [string]$_.RecipientTypeDetails } }, @{n = 'ExternalDirectoryObjectId'; e = { [string]$_.ExternalDirectoryObjectId } } })
+            (Invoke-Read 'recipients' { Get-Recipient -Anr $q -RecipientTypeDetails $types -ResultSize 25 | Select-Object DisplayName, @{n = 'PrimarySmtpAddress'; e = { [string]$_.PrimarySmtpAddress } }, @{n = 'RecipientTypeDetails'; e = { [string]$_.RecipientTypeDetails } }, @{n = 'ExternalDirectoryObjectId'; e = { [string]$_.ExternalDirectoryObjectId } }, @{n = 'Guid'; e = { [string]$_.Guid } } })
         )
     } elseif ($Mode -eq 'rights') {
         # Which change cmdlets and parameters the signed-in person's Exchange role includes. Connect-ExchangeOnline
@@ -325,7 +325,7 @@ try {
             (Invoke-Read 'dkim' { Get-DkimSigningConfig | Select-Object Domain, Enabled, Status }),
             (Invoke-Read 'inbound' { Get-InboundConnector | Select-Object Name, Enabled, ConnectorType, SenderDomains, RequireTls, RestrictDomainsToCertificate, RestrictDomainsToIPAddresses }),
             (Invoke-Read 'outbound' { Get-OutboundConnector | Select-Object Name, Enabled, ConnectorType, RecipientDomains, SmartHosts, TlsSettings, UseMXRecord, IsTransportRuleScoped }),
-            (Invoke-Read 'rules' { Get-TransportRule | Select-Object Name, Priority, State, Mode, Description, StopRuleProcessing, SentTo, SentToMemberOf, SentToScope, RecipientDomainIs, AnyOfRecipientAddressContainsWords, From, FromMemberOf, FromScope, SenderDomainIs, ExceptIfSentTo, ExceptIfSentToMemberOf, ExceptIfRecipientDomainIs, ExceptIfFrom, ExceptIfFromMemberOf, ExceptIfSenderDomainIs, ActivationDate, ExpiryDate }),
+            (Invoke-Read 'rules' { Get-TransportRule | Select-Object Name, @{n = 'Guid'; e = { [string]$_.Guid } }, Priority, State, Mode, Description, StopRuleProcessing, SentTo, SentToMemberOf, SentToScope, RecipientDomainIs, AnyOfRecipientAddressContainsWords, From, FromMemberOf, FromScope, SenderDomainIs, ExceptIfSentTo, ExceptIfSentToMemberOf, ExceptIfRecipientDomainIs, ExceptIfFrom, ExceptIfFromMemberOf, ExceptIfSenderDomainIs, ActivationDate, ExpiryDate }),
             (Invoke-Read 'presetEop' { Get-EOPProtectionPolicyRule | Select-Object ($recipientScope + 'HostedContentFilterPolicy', 'MalwareFilterPolicy', 'AntiPhishPolicy') }),
             (Invoke-Read 'presetAtp' { Get-ATPProtectionPolicyRule | Select-Object ($recipientScope + 'SafeLinksPolicy', 'SafeAttachmentPolicy', 'AntiPhishPolicy') }),
             (Invoke-Read 'builtIn' { Get-ATPBuiltInProtectionRule | Select-Object ($recipientScope + 'SafeLinksPolicy', 'SafeAttachmentPolicy') }),
@@ -378,7 +378,7 @@ try {
         $str = { param($v) @($v | Where-Object { $_ } | ForEach-Object { [string]$_ } | Select-Object -Unique) }
         $out.commands = @(
             (Invoke-Read 'groups' { Get-RoleGroup -ResultSize Unlimited | Select-Object Name, DisplayName, Description, @{n = 'Roles'; e = { & $str $_.Roles } }, @{n = 'Members'; e = { & $str $_.Members } }, @{n = 'ManagedBy'; e = { & $str $_.ManagedBy } }, WhenChanged }),
-            (Invoke-Read 'userRoles' { Get-RoleAssignmentPolicy | Select-Object Name, Description, IsDefault, @{n = 'AssignedRoles'; e = { & $str $_.AssignedRoles } }, WhenChanged }),
+            (Invoke-Read 'userRoles' { Get-RoleAssignmentPolicy | Select-Object Name, @{n = 'Guid'; e = { [string]$_.Guid } }, Description, IsDefault, @{n = 'AssignedRoles'; e = { & $str $_.AssignedRoles } }, WhenChanged }),
             (Invoke-Read 'assignments' { Get-ManagementRoleAssignment -ResultSize 2000 | Select-Object Name, @{n = 'Role'; e = { [string]$_.Role } }, @{n = 'RoleAssignee'; e = { [string]$_.RoleAssigneeName } }, @{n = 'RoleAssigneeType'; e = { [string]$_.RoleAssigneeType } }, @{n = 'AssignmentMethod'; e = { [string]$_.AssignmentMethod } }, @{n = 'RecipientWriteScope'; e = { [string]$_.RecipientWriteScope } }, @{n = 'CustomRecipientWriteScope'; e = { [string]$_.CustomRecipientWriteScope } }, @{n = 'CustomResourceScope'; e = { [string]$_.CustomResourceScope } }, Enabled }),
             (Invoke-Read 'scopes' { Get-ManagementScope | Select-Object Name, @{n = 'ScopeRestrictionType'; e = { [string]$_.ScopeRestrictionType } }, RecipientFilter, @{n = 'RecipientRoot'; e = { [string]$_.RecipientRoot } }, Exclusive }),
             (Invoke-Read 'servicePrincipals' { Get-ServicePrincipal | Select-Object DisplayName, @{n = 'AppId'; e = { [string]$_.AppId } }, @{n = 'ObjectId'; e = { [string]$_.ObjectId } } }),
@@ -391,6 +391,40 @@ try {
             (Invoke-Read 'config' { Get-AdminAuditLogConfig }),
             (Invoke-Read 'changes' { Search-AdminAuditLog -StartDate $start -EndDate $end -ResultSize 50 })
         )
+    } elseif ($Mode -eq 'recipientextra') {
+        # Single recipient: Mobile devices, Calendar and folder permissions, Admin changes. Reads only.
+        $id = [string]$request.identity
+        if (-not $id) { throw 'A recipient identity is required.' }
+        $what = [string]$request.what
+        $str = { param($v) @($v | Where-Object { $_ } | ForEach-Object { [string]$_ }) }
+        if ($what -eq 'devices') {
+            $out.commands = @(
+                (Invoke-Read 'devices' { Get-MobileDevice -Mailbox $id | Select-Object FriendlyName, DeviceId, DeviceModel, DeviceOS, DeviceType, ClientType, @{n = 'DeviceAccessState'; e = { [string]$_.DeviceAccessState } }, @{n = 'DeviceAccessStateReason'; e = { [string]$_.DeviceAccessStateReason } }, @{n = 'FirstSyncTime'; e = { if ($_.FirstSyncTime) { ([datetime]$_.FirstSyncTime).ToUniversalTime().ToString('o') } else { '' } } }, @{n = 'WhenChanged'; e = { if ($_.WhenChanged) { ([datetime]$_.WhenChanged).ToUniversalTime().ToString('o') } else { '' } } } })
+            )
+        } elseif ($what -eq 'folders') {
+            # The mailbox's own folders (not Recoverable Items or sync folders), at most 60, then each folder's permissions.
+            $out.commands = @(
+                (Invoke-Read 'folders' {
+                    $types = 'Root', 'Calendar', 'Inbox', 'Contacts', 'SentItems', 'Drafts', 'DeletedItems', 'Tasks', 'Notes', 'JunkEmail', 'Archive', 'User Created'
+                    $folders = @(Get-MailboxFolderStatistics -Identity $id -FolderScope All | Where-Object { $_.FolderType -in $types -and $_.FolderPath -notmatch '^/(Recoverable Items|Sync Issues|Conversation History|Yammer Root|ExternalContacts|PersonMetadata|Files|Social Activity Notifications|Calendar Logging)' } | Select-Object -First 60)
+                    foreach ($f in $folders) {
+                        $path = ([string]$f.FolderPath).Replace([string][char]0xF8FF, '/')
+                        $top = $path -eq '/Top of Information Store' -or $path -eq '/'
+                        $target = if ($top) { "${id}:\" } else { "${id}:" + $path.Replace('/', '\') }
+                        $label = if ($top) { 'Top of Information Store' } else { $path.TrimStart('/').Replace('/', '\') }
+                        try {
+                            Get-MailboxFolderPermission -Identity $target -ErrorAction Stop | Select-Object @{n = 'Folder'; e = { $label } }, @{n = 'FolderType'; e = { [string]$f.FolderType } }, @{n = 'User'; e = { [string]$_.User } }, @{n = 'AccessRights'; e = { & $str $_.AccessRights } }, @{n = 'SharingPermissionFlags'; e = { & $str $_.SharingPermissionFlags } }
+                        } catch { }
+                    }
+                })
+            )
+        } elseif ($what -eq 'audit') {
+            $start = (Get-Date).AddDays(-90)
+            $end = Get-Date
+            $out.commands = @(
+                (Invoke-Read 'changes' { Search-AdminAuditLog -ObjectIds $id -StartDate $start -EndDate $end -ResultSize 250 | Select-Object @{n = 'RunDate'; e = { if ($_.RunDate) { ([datetime]$_.RunDate).ToUniversalTime().ToString('o') } else { '' } } }, @{n = 'Caller'; e = { [string]$_.Caller } }, CmdletName, @{n = 'ObjectModified'; e = { [string]$_.ObjectModified } }, Succeeded, @{n = 'Parameters'; e = { @($_.CmdletParameters | ForEach-Object { "$($_.Name)=$($_.Value)" }) } } })
+            )
+        } else { throw 'Unknown read.' }
     } elseif ($Mode -eq 'ipps') {
         $start = if ($request.start) { Get-Date $request.start } else { (Get-Date).AddDays(-2) }
         $end = if ($request.end) { Get-Date $request.end } else { Get-Date }

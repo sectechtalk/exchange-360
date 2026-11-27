@@ -67,7 +67,7 @@ test('Forwarding, Inbox rules, Member of, Delegation and Protocols check your Ex
   const mode = ps.slice(ps.indexOf("$Mode -eq 'rights'"), ps.indexOf("$Mode -eq 'quarantine'"));
   assert.match(mode, /Get-Command -Name \$name/);
   assert.doesNotMatch(mode, /&\s*\$name|Invoke-Expression|\.Invoke\(/);
-  assert.match(read('server/exo.mjs'), /'search', 'rights'\]/);
+  assert.match(read('server/exo.mjs'), /'search', 'rights', 'recipientextra'\]/);
   assert.doesNotMatch(read('public/app.js'), /The portal checks your role\. Ex360 does not\./);
 });
 

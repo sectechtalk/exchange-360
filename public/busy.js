@@ -50,6 +50,19 @@ export function leaving(button, text) {
   button.classList.add('is-busy');
 }
 
+// A link to another page of the same app. The page that opens replaces the link; if it is still on screen after a
+// few seconds (the same page was already open), its label comes back.
+export function opening(link, text = 'Opening…') {
+  if (!link || link.classList.contains('is-busy')) return;
+  const label = link.textContent;
+  leaving(link, text);
+  setTimeout(() => {
+    link.textContent = label;
+    link.removeAttribute('aria-busy');
+    link.classList.remove('is-busy');
+  }, 4000);
+}
+
 // The safety net for buttons whose result is instant (sort menus, collapse, theme): a visible press.
 export function installPressFeedback(doc) {
   doc.addEventListener('click', event => {
@@ -62,6 +75,8 @@ export function installPressFeedback(doc) {
       const href = target.getAttribute('href') || '';
       if (/^\/auth\//.test(href)) leaving(target, /logout/.test(href) ? 'Signing out…' : 'Opening sign-in…');
       else if (target.target === '_blank') flash(target, 'Opened in a new tab');
+      // A button-styled link to another page in the app: say it is opening until that page replaces it.
+      else if (href.startsWith('#') && href !== doc.defaultView?.location?.hash) opening(target);
     }
   }, true);
 }

@@ -89,9 +89,14 @@ let tableCount = 0;
  * onRowClick(index): makes each row open something, like the portal's details panel.
  * search: true adds one search box above the table that matches any column.
  */
-export function dataTable({ columns, rows, onRowClick, rowLabel, search = false, searchLabel = 'Search', countLabel = ['item', 'items'], firstIsHeader = true, className = '' }) {
+// rowChildren(i) returns child rows for row i (a Node, or null when it has none). Rows with children get a fold
+// button in the first cell and start folded; opening one shows the children in a full-width row underneath.
+export function dataTable({ columns, rows, onRowClick, rowLabel, rowChildren = null, childLabel = 'items', search = false, searchLabel = 'Search', countLabel = ['item', 'items'], firstIsHeader = true, className = '' }) {
   const id = `grid-${++tableCount}`;
   const view = { sort: null, filters: {}, search: '' };
+  const unfolded = new Set();
+  const childCache = new Map();
+  const childrenOf = i => { if (!rowChildren) return null; if (!childCache.has(i)) childCache.set(i, rowChildren(i) || null); return childCache.get(i); };
   const wrap = h('div', { class: `data-grid ${className}`.trim() });
   const bar = h('div', { class: 'grid-bar' });
   const count = h('span', { class: 'grid-count', role: 'status' });
@@ -157,6 +162,16 @@ export function dataTable({ columns, rows, onRowClick, rowLabel, search = false,
       const row = rows[i];
       const tr = h('tr');
       row.forEach((cell, c) => tr.append(h(c === 0 && firstIsHeader ? 'th' : 'td', { scope: c === 0 && firstIsHeader ? 'row' : null }, drawCell(cell))));
+      const kids = childrenOf(i);
+      let childRow = null;
+      if (kids) {
+        const open = unfolded.has(i);
+        const fold = h('button', { type: 'button', class: 'row-fold', 'aria-expanded': String(open), 'aria-controls': `${id}-kids-${i}`, title: `${open ? 'Hide' : 'Show'} ${childLabel} in ${cellText(row[0])}`, 'aria-label': `${open ? 'Hide' : 'Show'} ${childLabel} in ${cellText(row[0])}` }, h('span', { 'aria-hidden': 'true', text: open ? '▾' : '▸' }));
+        fold.addEventListener('click', () => { if (unfolded.has(i)) unfolded.delete(i); else unfolded.add(i); draw(); });
+        tr.firstChild.prepend(fold);
+        tr.classList.add('has-children');
+        if (open) childRow = h('tr', { class: 'child-row', id: `${id}-kids-${i}` }, h('td', { colspan: columns.length }, kids));
+      }
       if (onRowClick) {
         tr.classList.add('clickable');
         tr.tabIndex = 0;
@@ -167,6 +182,7 @@ export function dataTable({ columns, rows, onRowClick, rowLabel, search = false,
         tr.addEventListener('keydown', event => { if ((event.key === 'Enter' || event.key === ' ') && event.target === tr) { event.preventDefault(); select(); } });
       }
       body.append(tr);
+      if (childRow) body.append(childRow);
     }
     if (!order.length) body.append(h('tr', {}, h('td', { colspan: columns.length, class: 'muted', text: rows.length ? 'Nothing matches the search. Use Clear sort and filters.' : 'No rows.' })));
     const [one, many] = countLabel;

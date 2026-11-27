@@ -90,6 +90,7 @@ a:hover{text-decoration:underline}
 .page-heading{margin:20px 0 16px}
 .page-heading h1{margin:0}
 .page-heading p{max-width:80ch;color:var(--muted);margin:6px 0 0}
+.page-heading #fold-all{margin-top:10px}
 .badge{display:inline-flex;align-items:center;font-size:var(--text-xs);font-weight:var(--weight-semibold);letter-spacing:.02em;padding:1px 8px;border-radius:var(--radius);border:1px solid var(--line)}
 .badge.demo{background:var(--warn-soft);color:var(--warn);border-color:var(--warn)}
 .badge.live{background:var(--ok-soft);color:var(--ok);border-color:var(--ok)}
@@ -222,6 +223,12 @@ dd{margin:0 0 8px}
 .col-menu .btn{justify-content:flex-start}
 .col-menu-label{font-size:var(--text-xs);color:var(--muted);margin-top:4px}
 tr.clickable{cursor:pointer}
+/* Rows with children: a fold button before the name, children in a full-width row underneath (indented). */
+.row-fold{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-right:6px;padding:0;border:1px solid var(--line);border-radius:var(--radius-control,4px);background:var(--surface);color:var(--fg);cursor:pointer;vertical-align:middle}
+.row-fold:hover{background:var(--row-hover)}
+.row-fold[aria-expanded="true"]{background:var(--row-selected)}
+.row-fold:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+tr.child-row>td{padding:8px 8px 12px 36px;background:var(--surface-2,var(--surface))}
 .tick{font-weight:var(--weight-semibold)}
 .tick.yes{color:var(--ok)}
 .tick.no{color:var(--muted)}
@@ -235,9 +242,9 @@ td:has(> .obj-cell),th:has(> .obj-cell){min-width:15rem}
 .portal-chips{display:flex;flex-wrap:wrap;gap:4px}
 .portal-chip{font-size:var(--text-xs);font-weight:var(--weight-semibold);line-height:18px;padding:0 6px;border:1px solid var(--btn-border);border-radius:var(--radius);background:var(--btn-bg);color:var(--btn-fg);white-space:nowrap}
 .portal-chip:hover{background:var(--btn-hover-bg);text-decoration:none}
-.portal-chip.find{background:var(--surface);color:var(--accent)}
-.portal-chip.find:hover{background:var(--accent-soft)}
 .obj-note{font-size:var(--text-xs);color:var(--muted)}
+.obj-link.plain{font-weight:inherit}
+.obj-link.find{text-decoration:underline dotted;text-underline-offset:3px}
 /* Details panel that slides in from the right: a Fluent Panel, like selecting a row in the Exchange admin center. */
 .flyout-back{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:20}
 .flyout{position:fixed;top:0;right:0;bottom:0;width:min(644px,100vw);z-index:21;background:var(--surface);color:var(--fg);box-shadow:var(--shadow-64);display:flex;flex-direction:column}
@@ -322,3 +329,114 @@ td:has(> .obj-cell),th:has(> .obj-cell){min-width:15rem}
 .nh-toast{position:fixed;right:16px;bottom:16px;z-index:40;width:min(380px,calc(100vw - 32px));display:grid;gap:6px;padding:12px 14px;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-left:4px solid var(--ok);border-radius:var(--radius-card);box-shadow:var(--shadow-16)}
 .nh-toast.crit{border-left-color:var(--crit)}
 .nh-toast p{margin:0}
+
+/* NextHop > Message path (public/message-path-view.js): each step of the path is a column; its objects are stacked
+   under it as buttons. After a prediction, steps show Passed / Stopped here / Not reached and the objects that acted
+   on the message are lit in their tone with the step number. */
+.mp-scroll{overflow-x:auto;padding-bottom:6px}
+.mp-rail{list-style:none;margin:0;padding:0;display:grid;grid-auto-flow:column;grid-auto-columns:212px;min-width:max-content}
+.mp-stop{position:relative;display:grid;grid-template-columns:minmax(0,1fr);align-content:start;gap:6px;padding:0 8px 4px;min-width:0}
+.mp-stop::before{content:"";position:absolute;top:13px;left:0;right:0;height:4px;background:var(--accent)}
+.mp-stop:first-child::before{left:50%}.mp-stop:last-child::before{right:50%}
+.mp-stop.not-reached::before{background:var(--line)}
+.mp-dot{position:relative;justify-self:center;width:30px;height:30px;border-radius:50%;background:var(--surface);border:4px solid var(--accent);display:grid;place-items:center;font-weight:var(--weight-semibold);font-size:var(--text-sm);font-variant-numeric:tabular-nums}
+.mp-stop.not-reached .mp-dot{border-color:var(--line-strong);color:var(--muted)}
+.mp-stop.stopped .mp-dot{border-color:var(--crit);background:var(--crit-soft)}
+.mp-stop.stopped.medium .mp-dot{border-color:var(--warn);background:var(--warn-soft)}
+.mp-stop.reached .mp-dot{border-color:var(--ok);background:var(--ok-soft)}
+.mp-title{text-align:center;font-weight:var(--weight-semibold);font-size:var(--text-sm);min-height:2.6em}
+.mp-state{justify-self:center;font-size:var(--text-xs);font-weight:var(--weight-semibold);padding:0 8px;border-radius:10px;border:1px solid var(--line-strong);color:var(--muted)}
+.mp-state.passed{color:var(--ok);border-color:var(--ok)}
+.mp-state.reached{color:var(--ok);border-color:var(--ok);background:var(--ok-soft)}
+.mp-state.stopped{color:var(--crit);border-color:var(--crit);background:var(--crit-soft)}
+.mp-stop.medium .mp-state.stopped{color:var(--warn);border-color:var(--warn);background:var(--warn-soft)}
+.mp-chip{display:grid;grid-template-columns:1fr auto;gap:0 6px;text-align:left;width:100%;background:var(--surface-2);color:var(--fg);border:1px solid var(--line-strong);border-left:4px solid var(--accent);border-radius:var(--radius);padding:5px 8px;font:inherit;cursor:pointer}
+.mp-chip:hover{background:var(--btn-hover-bg)}
+.mp-chip:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.mp-chip .t{grid-column:1;font-size:var(--text-xs);color:var(--muted);line-height:1.25;overflow-wrap:anywhere;min-width:0}
+.mp-chip .n{grid-column:1;font-size:var(--text-sm);font-weight:var(--weight-semibold);line-height:1.3;overflow-wrap:anywhere}
+.mp-chip .b{grid-column:2;grid-row:1/span 2;display:flex;flex-direction:column;gap:2px;align-items:flex-end}
+.mp-chip.off{border-left-color:var(--line-strong)}
+.mp-chip.off .n{color:var(--muted)}
+.mp-chip.quiet{border-left-color:var(--line-strong)}
+.mp-chip.quiet .n,.mp-chip.quiet .t{color:var(--muted)}
+.mp-chip.quiet .n{font-weight:var(--weight-regular)}
+.mp-chip.hit{opacity:1;border-width:2px;border-left-width:6px}
+.mp-chip.hit.ok{border-color:var(--ok);background:var(--ok-soft)}
+.mp-chip.hit.info{border-color:var(--accent);background:var(--info-soft)}
+.mp-chip.hit.medium{border-color:var(--warn);background:var(--warn-soft)}
+.mp-chip.hit.high{border-color:var(--crit);background:var(--crit-soft)}
+.mp-flag{font-size:var(--text-xs);font-weight:var(--weight-semibold);line-height:16px;padding:0 5px;border-radius:var(--radius);border:1px solid var(--line-strong);color:var(--muted);background:var(--surface);white-space:nowrap}
+.mp-flag.warn{color:var(--warn);border-color:var(--warn)}
+.mp-flag.step{color:var(--accent-ink);background:var(--accent-strong);border-color:var(--accent-strong)}
+.mp-flag.step.ok{background:var(--ok);border-color:var(--ok);color:var(--surface)}
+.mp-flag.step.medium{background:var(--warn);border-color:var(--warn);color:var(--surface)}
+.mp-flag.step.high{background:var(--crit);border-color:var(--crit);color:var(--surface)}
+.mp-none{font-size:var(--text-xs);color:var(--muted);text-align:center}
+.mp-tags{gap:6px}
+.mp-pill{font-size:var(--text-xs);font-weight:var(--weight-semibold);padding:1px 8px;border-radius:10px;border:1px solid var(--line-strong);color:var(--muted)}
+.mp-pill.ok{color:var(--ok);border-color:var(--ok);background:var(--ok-soft)}
+.mp-pill.warn{color:var(--warn);border-color:var(--warn);background:var(--warn-soft)}
+.mp-pill.crit{color:var(--crit);border-color:var(--crit);background:var(--crit-soft)}
+.mp-pill.info{color:var(--info);border-color:var(--info);background:var(--info-soft)}
+.mp-steps{margin:0;padding-left:1.2em;display:grid;gap:6px}
+.mp-props{width:100%;border-collapse:collapse;table-layout:fixed;font-size:var(--text-sm)}
+.mp-props th,.mp-props td{text-align:left;vertical-align:top;padding:6px 8px;border-bottom:1px solid var(--line);overflow-wrap:anywhere;white-space:pre-wrap}
+.mp-props th{width:42%;font-weight:var(--weight-regular);color:var(--muted);font-family:var(--font-mono);font-size:var(--text-xs)}
+.mp-sep{width:1px;align-self:stretch;background:var(--line-strong);margin:0 4px}
+/* Mail flow lanes: one column per kind of object; the route of a prediction is an SVG line drawn under the chips,
+   joining the objects that acted in step order. */
+.ml-stage{position:relative;min-width:max-content}
+.ml-lanes{position:relative;z-index:1;list-style:none;margin:0;padding:0;display:grid;grid-auto-flow:column;grid-auto-columns:184px;gap:16px}
+.ml-lane{display:grid;align-content:start;gap:6px;padding:8px;border-top:4px solid var(--accent);border-radius:var(--radius)}
+.ml-lane.ml-state-not-reached{opacity:.55}
+.ml-lane.ml-state-reached{border-top-color:var(--ok)}
+.ml-lane.ml-state-stopped{border-top-color:var(--crit)}
+.ml-lane.ml-state-stopped.medium{border-top-color:var(--warn)}
+.ml-lane.medium .mp-state.stopped{color:var(--warn);border-color:var(--warn);background:var(--warn-soft)}
+.ml-title{display:grid;justify-items:center;gap:4px;font-size:var(--text-xs);font-weight:var(--weight-semibold);letter-spacing:.04em;text-transform:uppercase;color:var(--muted);text-align:center;min-height:4.4em}
+.ml-num{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--accent);color:#fff;font-size:var(--text-xs);letter-spacing:0}
+.ml-route{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:visible}
+.ml-seg{fill:none;stroke:var(--accent);stroke-width:3;stroke-linecap:round;opacity:.85}
+.ml-seg.ok{stroke:var(--ok)}
+.ml-seg.medium{stroke:var(--warn)}
+.ml-seg.high{stroke:var(--crit)}
+.nh-from-message textarea{width:100%;min-height:7rem;font-family:var(--font-mono);font-size:var(--text-xs)}
+@media (prefers-reduced-motion:reduce){.mp-chip{transition:none}}
+/* Every pane folds under its heading (foldPane in app.js, collapsed by default); a NextHop step's settings fold under the step */
+.pane-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.pane-head .pane-fold{flex:none;font-size:var(--text-sm)}
+.panel.folded > :not(.pane-headrow),.walk-box.folded > :not(.pane-headrow){display:none!important}
+.panel.folded,.walk-box.folded{gap:0}
+.walk-settings{margin-top:2px}
+.walk-settings > summary{cursor:pointer;color:var(--accent);font-size:var(--text-sm);font-weight:var(--weight-semibold)}
+.walk-settings[open] > summary{margin-bottom:6px}
+/* NextHop: Topology at a glance, drawn like the Message path: one stop per stage, one box per area */
+.tg-rail{grid-auto-columns:220px}
+.tg-dir.inbound{color:var(--accent);border-color:var(--accent)}
+.tg-dir.outbound{color:var(--warn);border-color:var(--warn)}
+.tg-dir.both{color:var(--fg);border-color:var(--line-strong)}
+/* One box per area: a button header with the object count on its front, then every object as a link */
+.tg-box{display:grid;gap:4px;padding:6px 8px;background:var(--surface-2);border:1px solid var(--line-strong);border-left:4px solid var(--accent);border-radius:var(--radius);font-size:var(--text-sm)}
+.tg-box.empty{border-left-color:var(--line-strong)}
+.tg-box.shown-only{border-left-color:var(--warn)}
+.tg-head{display:grid;grid-template-columns:auto auto 1fr;gap:8px;align-items:center;text-align:left;background:var(--btn-bg);color:var(--btn-fg);border:1px solid var(--btn-border);border-radius:var(--radius);padding:4px 6px;font:inherit;font-weight:var(--weight-semibold);cursor:pointer}
+.tg-head:hover{background:var(--btn-hover-bg)}
+.tg-head:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.tg-count{min-width:28px;height:28px;padding:0 6px;display:grid;place-items:center;border-radius:var(--radius);background:var(--accent-strong);color:var(--accent-ink);font-size:var(--text-sm);font-variant-numeric:tabular-nums}
+.tg-count.zero{background:var(--surface);color:var(--muted);border:1px solid var(--line-strong)}
+.tg-title{overflow-wrap:anywhere;line-height:1.25}
+.tg-flag{justify-self:start}
+.tg-box.folded > .tg-body{display:none}
+.tg-body{display:grid;gap:6px}
+.tg-chev::before{content:"\25BE";font-size:var(--text-xs)}
+.tg-box.folded .tg-chev::before{content:"\25B8"}
+.tg-items{margin:0;padding-left:1.1em;display:grid;gap:2px;font-size:var(--text-xs);overflow-wrap:anywhere}
+.tg-none{margin:0;font-size:var(--text-xs);color:var(--muted)}
+.tg-name-list{margin:0;padding-left:1.2em;display:grid;gap:4px}
+/* Portal buttons: the home portal (where the object is stored) first and filled solid; PowerShell right under them */
+.portal-chip.home{background:var(--accent-strong);border-color:var(--accent-strong);color:var(--accent-ink)}
+.portal-chip.home:hover{background:var(--accent-strong);filter:brightness(1.1)}
+.ps-block{display:grid;gap:2px;margin-top:4px}
+.ps-label{font-size:var(--text-xs);color:var(--muted)}
+.ps-pre{margin:0;font-size:var(--text-xs);white-space:pre-wrap;overflow-wrap:anywhere}

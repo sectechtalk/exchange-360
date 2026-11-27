@@ -18,7 +18,7 @@
   </header>
   <aside class="sidebar">
     <div id="app-switcher" data-app="ex-360"></div>
-    <nav id="navigation" data-rail aria-label="Pages">
+    <nav id="navigation" data-rail data-nav-start="collapsed" aria-label="Pages">
       <button type="button" class="nav-label" aria-expanded="true" data-section="setup"><span>SETUP</span><span class="nav-chevron" aria-hidden="true"></span></button>
       <a href="#setup" data-view="setup" class="nav-item"><span data-nav-icon="wrench"></span>Setup steps</a>
       <button type="button" class="nav-label" aria-expanded="true" data-section="new-hire"><span>NEW HIRE</span><span class="nav-chevron" aria-hidden="true"></span></button>
@@ -68,22 +68,29 @@
       <button type="button" class="nav-group nav-item" aria-expanded="true" data-group="auditing-logging"><span data-nav-icon="calendar-clock"></span><span class="nav-group-text">Auditing/Logging</span><span class="nav-chevron" aria-hidden="true"></span></button>
       <a href="#audit" data-view="audit" class="nav-item nav-child"><span data-nav-icon="file-chart-column"></span>Audit</a>
       <a href="#changes" data-view="changes" class="nav-item nav-child"><span data-nav-icon="timer"></span>Change history</a>
+      <a href="#snapshots" data-view="snapshots" class="nav-item nav-child"><span data-nav-icon="braces"></span>Config snapshots</a>
       <button type="button" class="nav-label" aria-expanded="true" data-section="single-recipient"><span>SINGLE RECIPIENT</span><span class="nav-chevron" aria-hidden="true"></span></button>
       <a href="#mb-recipient" data-view="mb-recipient" class="nav-item"><span data-nav-icon="circle-user"></span>Recipient</a>
+      <a href="#mb-licenses" data-view="mb-licenses" class="nav-item"><span data-nav-icon="user-check"></span>Licenses and service plans</a>
       <a href="#mb-forward" data-view="mb-forward" class="nav-item"><span data-nav-icon="git-pull-request"></span>Forwarding</a>
       <a href="#mb-rules" data-view="mb-rules" class="nav-item"><span data-nav-icon="stamp"></span>Inbox rules</a>
       <a href="#mb-delegation" data-view="mb-delegation" class="nav-item"><span data-nav-icon="key-round"></span>Delegation</a>
+      <a href="#mb-folders" data-view="mb-folders" class="nav-item"><span data-nav-icon="calendar-clock"></span>Calendar and folder permissions</a>
       <a href="#mb-groups" data-view="mb-groups" class="nav-item"><span data-nav-icon="users"></span>Member of</a>
       <a href="#mb-policies" data-view="mb-policies" class="nav-item"><span data-nav-icon="shield-half"></span>Policies that apply</a>
       <a href="#mb-protocols" data-view="mb-protocols" class="nav-item"><span data-nav-icon="smartphone"></span>Protocols</a>
+      <a href="#mb-devices" data-view="mb-devices" class="nav-item"><span data-nav-icon="hard-drive"></span>Mobile devices</a>
       <a href="#mb-signins" data-view="mb-signins" class="nav-item"><span data-nav-icon="log-in"></span>Sign-ins</a>
+      <a href="#mb-messages" data-view="mb-messages" class="nav-item"><span data-nav-icon="download"></span>Message trace</a>
+      <a href="#mb-quarantine" data-view="mb-quarantine" class="nav-item"><span data-nav-icon="cloud-cog"></span>Quarantine</a>
+      <a href="#mb-changes" data-view="mb-changes" class="nav-item"><span data-nav-icon="file-code"></span>Admin changes</a>
       <a href="#mb-findings" data-view="mb-findings" class="nav-item"><span data-nav-icon="shield-alert"></span>Findings</a>
       <a href="#mb-compliance" data-view="mb-compliance" class="nav-item"><span data-nav-icon="file-check"></span>Compliance on this recipient</a>
       <a href="#mb-ca" data-view="mb-ca" class="nav-item"><span data-nav-icon="lock-keyhole"></span>Conditional Access</a>
       <a href="#mb-xdr" data-view="mb-xdr" class="nav-item"><span data-nav-icon="bug"></span>Defender XDR</a>
+      <a href="#nexthop" data-view="nexthop" class="nav-item"><span data-nav-icon="blocks"></span>NextHop</a>
       <button type="button" class="nav-label" aria-expanded="true" data-section="troubleshoot"><span>TROUBLESHOOT</span><span class="nav-chevron" aria-hidden="true"></span></button>
       <a href="#trace" data-view="trace" class="nav-item"><span data-nav-icon="arrow-left-right"></span>Trace a message</a>
-      <a href="#nexthop" data-view="nexthop" class="nav-item"><span data-nav-icon="blocks"></span>NextHop</a>
       <a href="#quarantine" data-view="quarantine" class="nav-item"><span data-nav-icon="ban"></span>Quarantine</a>
       <a href="#hops" data-view="hops" class="nav-item"><span data-nav-icon="activity"></span>Message hops</a>
       <a href="#outlook" data-view="outlook" class="nav-item"><span data-nav-icon="laptop"></span>Outlook on this PC</a>
@@ -106,6 +113,7 @@
     <div class="page-heading">
       <h1 id="page-title">Start here</h1>
       <p id="page-intro"></p>
+      <button type="button" id="fold-all" class="btn sm" hidden>Expand all sections</button>
     </div>
     <div id="page"></div>
   </main>

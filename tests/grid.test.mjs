@@ -98,3 +98,12 @@ test('every data table in app.js goes through the shared table with column menus
   assert.ok(raw <= 2, `only the report fact and settings tables may build a raw table, found ${raw}`);
   assert.match(app, /function table\(headers, rows, options = \{\}\) \{\n\s+return dataTable\(/);
 });
+
+test('rows can fold open to show children, and the Compare sections table uses it for its objects', () => {
+  const grid = readFileSync(new URL('../public/grid.js', import.meta.url), 'utf8');
+  assert.match(grid, /rowChildren = null/);
+  assert.match(grid, /class: 'row-fold', 'aria-expanded': String\(open\)/);
+  const page = readFileSync(new URL('../public/snapshots-page.js', import.meta.url), 'utf8');
+  assert.match(page, /rowChildren: i =>/);
+  assert.match(page, /'Objects added, removed or changed'/, 'the flat objects table stays for now');
+});

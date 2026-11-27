@@ -31,10 +31,13 @@ export function installShell(doc = document) {
   if (rail && rail.dataset.sections !== 'app' && rail.querySelector('.nav-label')) {
     let storage = null; try { storage = doc.defaultView.localStorage; } catch { /* storage blocked */ }
     const app = host?.dataset.app || 'app';
-    const sections = installNavSections(rail, storage, `${app.replace(/-/g, '')}/nav/collapsed`);
+    const sections = installNavSections(rail, storage, `${app.replace(/-/g, '')}/nav/collapsed`, { startCollapsed: rail.dataset.navStart === 'collapsed' });
     const showCurrent = () => setTimeout(() => sections.expandItem(rail.querySelector('[aria-current="page"]')), 0);
     doc.defaultView.addEventListener('hashchange', showCurrent);
     showCurrent();
+    // The app marks the current page after its first read finishes; open that page's section then too.
+    const MO = doc.defaultView.MutationObserver;
+    if (MO) new MO(showCurrent).observe(rail, { subtree: true, attributes: true, attributeFilter: ['aria-current'] });
   }
   const toggle = doc.getElementById('nav-toggle');
   if (toggle && rail) {

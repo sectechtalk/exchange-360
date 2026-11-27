@@ -43,7 +43,7 @@ export async function loadCompliance({ demo, graphToken, exoToken, ippsToken, or
     return (bundle.commands || []).find(c => c.name === name) || { ok: true, value: [] };
   };
   const shaped = shapeCompliance(ipps);
-  const casesFromGraph = cases.ok ? cases.value.map(c => ({ name: c.displayName, status: c.status, created: c.createdDateTime || '', changed: c.lastModifiedDateTime || '', modifiedBy: c.lastModifiedBy?.user?.displayName || '', number: c.externalId || '', description: c.description || '', holds: [] })) : null;
+  const casesFromGraph = cases.ok ? cases.value.map(c => ({ id: c.id || '', name: c.displayName, status: c.status, created: c.createdDateTime || '', changed: c.lastModifiedDateTime || '', modifiedBy: c.lastModifiedBy?.user?.displayName || '', number: c.externalId || '', description: c.description || '', holds: [] })) : null;
   if (casesFromGraph && Array.isArray(shaped.holds)) {
     for (const h of shaped.holds) {
       const owner = Array.isArray(shaped.casesPs) ? shaped.casesPs.find(c => c.id === h.caseId || c.name === h.caseId) : null;

@@ -13,9 +13,15 @@ export function sectionKey(text) {
   return String(text || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
-export function installNavSections(nav, storage, storageKey = NAV_COLLAPSE_KEY) {
-  const collapsed = new Set(readCollapsed(storage, storageKey));
+// startCollapsed (Exchange 360, 2026-11-27: "On EVERY page I want the default of collapsible sections to be
+// collapsed"): every section and group starts closed on each page load, except the one holding the page you are
+// on, and nothing is remembered between loads.
+export function installNavSections(nav, storage, storageKey = NAV_COLLAPSE_KEY, { startCollapsed = false } = {}) {
   const labels = [...nav.querySelectorAll('.nav-label')];
+  const collapsed = new Set(startCollapsed
+    ? [...labels.map(l => l.dataset.section || sectionKey(l.textContent)), ...[...nav.querySelectorAll('.nav-group')].map(g => `group:${g.dataset.group || sectionKey(g.textContent)}`)]
+    : readCollapsed(storage, storageKey));
+  if (startCollapsed) storage = null;
   const itemsOf = label => {
     const out = [];
     for (let el = label.nextElementSibling; el && !el.classList.contains('nav-label'); el = el.nextElementSibling) out.push(el);

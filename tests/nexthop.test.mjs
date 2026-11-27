@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { predict, checkExport, orgOf, pickPolicy, containsWord, ipInRange, bytesOf, sitRefs, matchSits, lookalike, urlMatches, nextHopText, topologyRows, TOPOLOGY_AREAS } from '../lib/nexthop.js';
+import { predict, checkExport, orgOf, pickPolicy, containsWord, ipInRange, bytesOf, sitRefs, matchSits, lookalike, urlMatches, nextHopText, topologyRows, TOPOLOGY_AREAS, TOPOLOGY_PATHS, topologyStages } from '../lib/nexthop.js';
 import { sampleExport, SECTION_META, SAMPLE_MAILBOX } from '../lib/nexthop-sample.js';
 import { SCENARIOS } from '../lib/nexthop-scenarios.js';
 import { nextHopHtml, nextHopMhtml, nextHopFileName, quotedPrintable } from '../lib/nexthop-report.js';
@@ -219,7 +219,7 @@ test('the .mhtml report holds the message, every step, the settings and opens as
 
 test('NextHop is a TROUBLESHOOT page that works signed out, with portals and busy feedback on its buttons', () => {
   const page = PAGES.find(p => p.id === 'nexthop');
-  assert.equal(page.section, 'Troubleshoot');
+  assert.equal(page.section, 'Single recipient');
   assert.ok(PANE_PORTALS.nexthop);
   const app = read('public/app.js');
   assert.match(app, /SIGNED_OUT_VIEWS = new Set\(\[[^\]]*'nexthop'/);
@@ -228,7 +228,7 @@ test('NextHop is a TROUBLESHOOT page that works signed out, with portals and bus
   const src = read('public/nexthop-page.js');
   for (const label of ["'Opening…'", "'Reading the file…'", "'Predicting…'", "'Building…'", "'Starting…'", "flash(save, 'Downloaded')", "flash(copy, 'Copied')", "flash(again, 'Form above')", "flash(fresh, 'Blank form above')"]) assert.ok(src.includes(label), label);
   // Every button built on the page: busy(), flash() or an immediate redraw.
-  assert.equal((src.match(/el\('button'/g) || []).length, 10, 'a new NextHop button needs busy(), flash() or a redraw; then update this count');
+  assert.equal((src.match(/el\('button'/g) || []).length, 17, 'a new NextHop button needs busy(), flash() or a redraw; then update this count');
   // No demo mode: the sample opens only when chosen.
   assert.doesNotMatch(src, /state\.(demo|session)/);
   assert.match(src, /Sample topology: fictional Contoso, not your tenant/);
@@ -239,6 +239,31 @@ test('topology rows cover every area', () => {
   const rows = topologyRows(cfg());
   assert.equal(rows.length, TOPOLOGY_AREAS.length);
   assert.ok(rows.every(r => r.status === 'ok' || r.status === 'empty'));
+  // Every area the prediction reads is listed, and the ones it does not use yet say so.
+  const keys = rows.map(r => r.key);
+  for (const k of ['transportConfig', 'dkimSigningConfig', 'tenantAllowBlockIPs', 'tenantAllowBlockSpoof', 'secOpsOverridePolicy', 'phishSimOverridePolicy', 'presetEopRules', 'mailbox', 'mailboxStatistics', 'junkEmailConfig', 'autoReply', 'externalInOutlook']) assert.ok(keys.includes(k), k);
+  assert.equal(rows.find(r => r.key === 'arcConfig').predicted, false);
+  assert.equal(rows.find(r => r.key === 'transportRules').predicted, true);
+  // Every area sits on the inbound or the outbound path (or both), once per path, and the paths hold nothing else.
+  const all = TOPOLOGY_AREAS.map(([k]) => k).sort();
+  for (const dir of ['inbound', 'outbound']) {
+    const keys = TOPOLOGY_PATHS[dir].flatMap(st => st.keys);
+    assert.equal(new Set(keys).size, keys.length, `${dir}: no area twice`);
+    assert.ok(keys.every(k => all.includes(k)), dir);
+    assert.equal(topologyStages(cfg(), dir).reduce((n, st) => n + st.rows.length, 0), keys.length);
+  }
+  assert.deepEqual([...new Set([...TOPOLOGY_PATHS.inbound, ...TOPOLOGY_PATHS.outbound].flatMap(st => st.keys))].sort(), all);
+  assert.equal(TOPOLOGY_PATHS.outbound[0].id, 'mailbox');
+});
+
+test('NextHop panes fold under their heading, and settings sit under their step', () => {
+  const src = read('public/nexthop-page.js');
+  // Panes fold through the shared panel() in app.js, collapsed by default on every page.
+  const app = read('public/app.js');
+  assert.match(app, /const panel = \(\.\.\.kids\) => foldPane\(addPanePortal\(/);
+  assert.match(app, /set\(!openPanes\(\)\[key\]\)/);
+  assert.match(src, /stepSettings\(s\)/);
+  assert.doesNotMatch(src, /el\('h3', \{ text: 'Settings that caused it' \}\)/);
 });
 
 test('the test message form stacks one field per row with (required) or (optional) beside each label', () => {
@@ -276,7 +301,7 @@ test('every step links to the portal page where its setting is configured, DLP i
   for (const step of result.steps.filter(x => !noPortal.has(x.component))) assert.ok(stepPortalKinds(step).length, step.component);
   const page = read('public/nexthop-page.js');
   assert.match(page, /stepLinks\(s\)/);
-  assert.match(page, /'Configured in'/);
+  assert.match(page, /'Some settings shown in'/);
 });
 
 test('the step-by-step list is striped like the tables', () => {

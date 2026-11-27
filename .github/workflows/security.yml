@@ -1,13 +1,15 @@
-# Security gate (360 standard). Runs on every PR, on main, and weekly.
+# Security gate (360 standard). Runs on every PR and weekly.
 # $0: GitHub-hosted runners and free tools only. Actions are pinned to commit SHAs.
 name: security
+# No second run on main after a squash merge, and a newer push to a PR cancels the older run.
 on:
   pull_request:
-  push:
-    branches: [main]
   schedule:
     - cron: '17 14 * * 1'
   workflow_dispatch:
+concurrency:
+  group: security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
   pull-requests: read
@@ -47,8 +49,12 @@ jobs:
       - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The action downloads gitleaks into the temp folder and leaves the download there. On a runner that outlives
+          # the job, the next run finds the old file and stops before it scans anything. The runner's own temp folder
+          # is emptied for every job, so the download always starts clean.
+          TMPDIR: ${{ runner.temp }}
   powershell-parse:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

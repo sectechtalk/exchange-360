@@ -16,9 +16,13 @@ services:
     # so the NextHop MCP tools can read them. Set EX360_EXPORTS_HOST in your shell to use another folder.
     volumes:
       - "${EX360_EXPORTS_HOST:-${USERPROFILE:-.}/Ex360-exports}:/exports:ro"
+    # Config snapshots (Organization > Auditing/Logging > Config snapshots) are saved here, on your PC.
+    # Set EX360_SNAPSHOTS_HOST in your shell to use another folder.
+      - "${EX360_SNAPSHOTS_HOST:-${USERPROFILE:-.}/Ex360-snapshots}:/snapshots"
     env_file:
       - .env
     environment:
       PORT: "8360"
       HOST: "0.0.0.0"
       EX360_EXPORTS_DIR: /exports
+      EX360_SNAPSHOTS_DIR: /snapshots

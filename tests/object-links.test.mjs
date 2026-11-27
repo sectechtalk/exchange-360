@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { portalLinks, linkTitle, recipientKind, FIND_PAGES } from '../lib/object-links.js';
+import { portalLinks, linkTitle, recipientKind, FIND_PAGES, HOME_PORTAL } from '../lib/object-links.js';
 import { matchesRecipient } from '../lib/recipients.js';
 
 const ID = 'aaaaaaaa-0000-4000-8000-000000000001';
@@ -102,4 +102,52 @@ test('a recipient search result selects the recipient; its portal chips still op
   assert.match(body, /openRecipient\(r\)/);
   assert.match(body, /name\.replaceWith\(select\)/);
   assert.equal((app.match(/h2\('Pick a recipient'\)/g) || []).length, 1, '"Pick a recipient" shows once');
+});
+
+// Route patterns read from the Exchange admin center's route table and opened in a signed-in browser on 2026-11-25.
+test('Exchange admin center opens each object\'s own properties flyout by ID', () => {
+  const eac = 'https://admin.exchange.microsoft.com';
+  assert.equal(portalLinks('resource', { id: ID }).links[0].url, `${eac}/#/resources/:/ResourceDetails/${ID}`);
+  assert.equal(portalLinks('mailbox', { id: ID }).links[0].url, `${eac}/#/mailboxes/:/MailboxDetails/${ID}`);
+  assert.equal(portalLinks('dynamicGroup', { id: ID }).links[0].url, `${eac}/#/groups/:/GroupDetails/${ID}/7`);
+  assert.equal(portalLinks('transportRule', { id: ID }).links[0].url, `${eac}/#/transportrules/:/ruleDetails/${ID}/viewinflyoutpanel`);
+  assert.equal(portalLinks('userRolePolicy', { id: ID }).links[0].url, `${eac}/#/userroles/:/userroledetails/${ID}`);
+  assert.equal(portalLinks('contact', { id: ID, type: 'MailContact' }).links[0].url, `${eac}/#/contacts/:/ContactDetails/mailContact/${ID}`);
+  assert.equal(portalLinks('mailuser', { id: ID, type: 'GuestMailUser' }).links[0].url, `${eac}/#/contacts/:/ContactDetails/guestMailUser/${ID}`);
+  assert.equal(portalLinks('mailuser', { id: ID, type: 'MailUser' }).links[0].url, `${eac}/#/contacts/:/ContactDetails/mailUser/${ID}`);
+  for (const kind of ['resource', 'mailbox', 'dynamicGroup', 'transportRule', 'userRolePolicy', 'contact']) assert.equal(portalLinks(kind, { id: ID }).links[0].direct, true, kind);
+  // Without an ID the same kinds fall back to the list page, never a broken flyout.
+  for (const kind of ['resource', 'dynamicGroup', 'transportRule', 'userRolePolicy', 'contact']) assert.ok(portalLinks(kind, {}).links.every(l => !l.direct), kind);
+  assert.equal(recipientKind({ source: 'user', type: 'GuestMailUser' }), 'mailuser');
+});
+
+test('an eDiscovery case opens its own Purview case page with its name', () => {
+  assert.equal(portalLinks('ediscovery', { id: ID, name: 'Lab case 2' }).links[0].url, `https://purview.microsoft.com/ediscovery/casespage/${ID}?casename=Lab%20case%202`);
+  assert.equal(portalLinks('ediscovery', { name: 'Lab case 2' }).links[0].direct, false);
+});
+
+test('every returned object is a link: names fall back to the list page, addresses and members are links too', () => {
+  const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(app, /function nameLink\(text, links/);
+  for (const needle of ["objLink(r.SenderAddress, 'address')", "objLink(r.RecipientAddress, 'address')", "cells[1] = objLink(cells[1], spec.kind, obj)", "objLinks(r.members || [], 'address')", "xc('transportRule', x.name, { id: r.Guid })", "xc('userRolePolicy', r.Name, { id: r.Guid })"]) assert.ok(app.includes(needle), needle);
+  const ps = readFileSync(new URL('../server/Invoke-Ex360Command.ps1', import.meta.url), 'utf8');
+  assert.match(ps, /Get-TransportRule \| Select-Object Name, @\{n = 'Guid'/);
+  assert.match(ps, /Get-RoleAssignmentPolicy \| Select-Object Name, @\{n = 'Guid'/);
+  assert.match(ps, /Get-DynamicDistributionGroup -ResultSize 500 \| Select-Object DisplayName, PrimarySmtpAddress, @\{n = 'Guid'/);
+});
+
+test('the home portal (where the object is stored) comes first, with the PowerShell that reads every setting', () => {
+  const rule = portalLinks('transportRule', { name: 'Block exe', id: 'aaaaaaaa-0000-4000-8000-000000000001' });
+  assert.equal(rule.links[0].home, true);
+  assert.match(rule.links[0].short, /Exchange admin center/);
+  assert.equal(rule.links.filter(l => l.home).length, 1);
+  assert.deepEqual(rule.command.lines, ["Get-TransportRule -Identity 'aaaaaaaa-0000-4000-8000-000000000001' | Format-List *"]);
+  const spam = portalLinks('antiSpam', { name: "Bob's policy" });
+  assert.match(spam.links[0].short, /Defender/);
+  assert.equal(spam.command.lines[0], "Get-HostedContentFilterPolicy -Identity 'Bob''s policy' | Format-List *");
+  const dlp = portalLinks('dlp', { name: 'U.S. Financial Data > Block cards' });
+  assert.match(dlp.links[0].short, /Purview/);
+  assert.match(dlp.command.shell, /Security & Compliance/);
+  assert.equal(portalLinks('domain', { name: 'contoso.com' }).links[0].home, true);
+  for (const kind of Object.keys(HOME_PORTAL)) assert.ok(Array.isArray(portalLinks(kind, { name: 'x' }).links), kind);
 });

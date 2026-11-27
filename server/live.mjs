@@ -113,6 +113,9 @@ export function mergeExchangeRecipients(graphRows, exoRows) {
     const known = byAddress.get(address.toLowerCase());
     if (known) { if (type) { known.type = type; known.typeLabel = recipientType(type).label; } continue; }
     const row = { id: address, source: 'exo', displayName: asText(e.DisplayName) || address, primary: address, type, typeLabel: recipientType(type).label };
+    // The Exchange admin center opens a dynamic distribution list by its Exchange Guid (it has no Entra object).
+    const guid = asText(e.Guid);
+    if (guid) row.guid = guid;
     byAddress.set(address.toLowerCase(), row);
     out.push(row);
   }

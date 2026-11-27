@@ -14,10 +14,13 @@ function files(dir, ext) {
   return out;
 }
 
+const SNAPSHOT_POST = "getJson('/api/snapshots/start', { method: 'POST',";
+
 test('page scripts only GET', () => {
   const offenders = [];
   for (const file of [...files(path.join(root, 'public'), '.js'), ...files(path.join(root, 'lib'), '.js')]) {
-    const text = readFileSync(file, 'utf8');
+    // The one POST a page may send: Config snapshots starting a read-only snapshot saved on the PC (never a tenant write).
+    const text = readFileSync(file, 'utf8').replace(SNAPSHOT_POST, '');
     if (/\bfetch\s*\([^)]*method\s*:\s*['"](?!GET)/i.test(text) || /\bmethod:\s*['"](POST|PUT|PATCH|DELETE)['"]/i.test(text)) offenders.push(path.relative(root, file));
   }
   assert.deepEqual(offenders, []);
@@ -25,6 +28,9 @@ test('page scripts only GET', () => {
 
 test('the server rejects tenant writes and allows one local collector POST', () => {
   const server = readFileSync(path.join(root, 'server', 'index.mjs'), 'utf8');
+  // The only other POST: starting a config snapshot, which reads the tenant (Get- only) and writes a file on the PC.
+  assert.match(server, /req\.method === 'POST' && url\.pathname === '\/api\/snapshots\/start'/);
+  assert.equal((server.match(/req\.method === 'POST'/g) || []).length, 2);
   assert.match(server, /pathname === '\/api\/outlook-client'/);
   assert.match(server, /req\.method !== 'GET'/);
   assert.doesNotMatch(server, /graph\.microsoft\.com[\s\S]{0,80}method:\s*['"]POST/i);
@@ -41,7 +47,7 @@ test('Exchange script is Get- only', () => {
 
 for (const file of files(path.join(root, 'public'), '.js')) {
   test(`GET-only file ${path.basename(file)}`, () => {
-    const text = readFileSync(file, 'utf8');
+    const text = readFileSync(file, 'utf8').replace(SNAPSHOT_POST, '');
     assert.doesNotMatch(text, /XMLHttpRequest|\.send\(|axios\.|method:\s*['"]POST/);
   });
 }
